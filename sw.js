@@ -1,9 +1,9 @@
 // Bump V together with ?v= in index.html.
-const V = 10;
+const V = 11;
 const CACHE = `ahilik-v${V}`;
 const PRECACHE = [
   './', './index.html', `./style.css?v=${V}`, './manifest.webmanifest',
-  ...['main', 'data', 'game', 'bot', 'path', 'scene', 'ui', 'sfx', 'assets'].map((m) => `./src/${m}.js?v=${V}`),
+  ...['main', 'data', 'game', 'bot', 'path', 'scene', 'ui', 'tutorial', 'sfx', 'assets'].map((m) => `./src/${m}.js?v=${V}`),
 ];
 
 self.addEventListener('install', (e) => {
