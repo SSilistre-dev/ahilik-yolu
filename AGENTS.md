@@ -103,3 +103,5 @@ Bunlar dışında sorma; port doluysa boş port seç ve söyle.
 - 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı (test yanıltıcı) — her JS/CSS değişikliğinden sonra importmap `?v=` artırılır, sonra test edilir.
 - 2026-10-09 — Alt ajan commit'i git hook ile engelli; worktree ajanları değişikliği bırakır, ana oturum commit + merge eder.
 - 2026-10-09 — `<script type=module src=main.js>` importmap'i atlıyor, main.js versiyonsuz kaldı ve SW eski kopyayı verdi — giriş modülü inline `import "./src/main.js"` ile yüklenir; `?v=` index.html ve `sw.js` V ile birlikte artırılır.
+- 2026-10-09 — v10–v12 ve spec doğrudan `main`'e push edildi, PR açılmadı (kullanıcı sordu) — her değişiklik dal + PR + ikinci model review ile gider; `main`'e push = Pages deploy.
+- 2026-10-09 — UI test'i `__ahilik.act` ile aksiyonu doğrudan verdi, düğmenin yanlış `legal` indeksini göremedi (review yakaladı) — UI akışı en az bir kez gerçek DOM düğmesine tıklanarak doğrulanır. `codex exec review` bu hesapta model hatası veriyor; yedek `opencode run -m deepseek/deepseek-v4-pro`, diff dosyası proje içinde (`.wt/`) olmalı.
