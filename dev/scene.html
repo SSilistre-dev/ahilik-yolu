@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>scene dev</title>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<style>html,body{margin:0;height:100%;background:#222;font:14px sans-serif}
+#v{position:fixed;inset:0}#bar{position:fixed;top:0;left:0;right:0;z-index:2;display:flex;gap:6px;flex-wrap:wrap;padding:6px}</style>
+</head><body>
+<div id="bar"></div><div id="v"><canvas id="c"></canvas></div>
+<script type="module">
+import { createScene } from '../src/scene.js';
+import { neighbors } from '../src/data.js';
+let state = null, hl = [];
+const sc = createScene(document.getElementById('c'), { onTileTap: (i) => console.log('tap', i) });
+window.sc = sc;
+const draw = () => state && sc.render(state, { highlight: hl });
+async function load(n) { state = await (await fetch(`../fixtures/${n}.json`)).json(); hl = []; draw(); }
+function move() {
+  if (!state) return;
+  state = structuredClone(state);
+  const p = state.players[0], from = state.tiles[p.pos];
+  const opts = neighbors(p.pos).filter((i) => !state.tiles[i].closed);
+  const to = opts[Math.floor(Math.random() * opts.length)];
+  from.occupants = from.occupants.filter((x) => x !== 0);
+  state.tiles[to].occupants.push(0); p.pos = to; hl = []; draw();
+}
+function hlNb() { if (state) { hl = neighbors(state.players[0].pos); draw(); } }
+for (const [t, f] of [['start', () => load('start')], ['mid', () => load('mid')], ['over', () => load('over')], ['move p0', move], ['highlight nb', hlNb], ['clear hl', () => { hl = []; draw(); }]]) {
+  const b = document.createElement('button'); b.textContent = t; b.onclick = f; document.getElementById('bar').append(b);
+}
+load('mid');
+</script></body></html>
