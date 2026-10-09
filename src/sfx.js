@@ -8,9 +8,9 @@ export function createSfx() {
   const bufs = {};
   let muted = false;
   try { muted = localStorage.getItem(KEY) === '1'; } catch {}
-  // ponytail: yalnız ogg gönderiyoruz (afconvert ogg okuyamadı); m4a eklenirse ext otomatik seçer.
+  // iOS Safari Ogg çalmaz: AAC (m4a) destekleniyorsa onu, yoksa ogg.
   let ext = 'ogg';
-  try { if (!new Audio().canPlayType('audio/ogg; codecs="vorbis"')) ext = 'm4a'; } catch {}
+  try { if (new Audio().canPlayType('audio/mp4; codecs="mp4a.40.2"')) ext = 'm4a'; } catch {}
 
   function context() {
     if (!ctx) {
@@ -27,10 +27,24 @@ export function createSfx() {
     }
     return bufs[name];
   }
+  // iOS arka plana gidince/arama sonrası context 'suspended'/'interrupted' olur.
+  document.addEventListener('visibilitychange', () => {
+    try { if (!document.hidden && ctx && ctx.state !== 'running') ctx.resume(); } catch {}
+  });
   return {
     get muted() { return muted; },
     unlock() {
-      try { const c = context(); if (c && c.state !== 'running') c.resume(); } catch {}
+      try {
+        const c = context();
+        if (!c) return;
+        if (c.state !== 'running') { // iOS: jest içinde resume + sessiz buffer sesi kilitten çıkarır
+          c.resume();
+          const s = c.createBufferSource();
+          s.buffer = c.createBuffer(1, 1, 22050);
+          s.connect(c.destination);
+          s.start(0);
+        }
+      } catch {}
     },
     play(name) {
       try {

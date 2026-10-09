@@ -4,39 +4,54 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ahilik Yolu">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2b1d12">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
   <title>Ahilik Yolu – Ahlakın Yolu</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
   <style>
+    html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-text-size-adjust: 100%; }
+    input, textarea { -webkit-user-select: text; user-select: text; }
+    /* three.js CDN'den gelene kadar boş ekran yerine */
+    #ui:empty::before { content: 'Yükleniyor…'; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #2b1d12; color: #f3e3c3; font: 600 20px system-ui, sans-serif; }
+    #old { display: none; position: fixed; inset: 0; z-index: 10000; align-items: center; justify-content: center; padding: 24px; background: #2b1d12; color: #fff; font: 600 20px/1.4 system-ui, sans-serif; text-align: center; }
     #mute:not(.ay-round) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; z-index: 50; border: 0; border-radius: 50%; background: rgba(43,29,18,.75); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
     #rotate { display: none; position: fixed; inset: 0; z-index: 9999; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #2b1d12; color: #fff; font: 600 20px system-ui, sans-serif; text-align: center; }
     #rotate b { font-size: 56px; }
     @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
   </style>
+  <script>
+    // importmap: iOS 16.4+ / Chrome 89+. Eskisinde boş sayfa yerine mesaj.
+    if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap')))
+      document.write('<style>#old{display:flex!important}</style>');
+    // iOS Safari pinch-zoom (viewport user-scalable=no yok sayılır).
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
+  </script>
   <!-- Bump v on every release: modules are mapped to versioned URLs so stale browser caches are bypassed. -->
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./src/main.js": "./src/main.js?v=9",
-      "./src/path.js": "./src/path.js?v=9",
-      "./src/data.js": "./src/data.js?v=9",
-      "./src/game.js": "./src/game.js?v=9",
-      "./src/bot.js": "./src/bot.js?v=9",
-      "./src/scene.js": "./src/scene.js?v=9",
-      "./src/ui.js": "./src/ui.js?v=9",
-      "./src/sfx.js": "./src/sfx.js?v=9",
-      "./src/assets.js": "./src/assets.js?v=9"
+      "./src/main.js": "./src/main.js?v=10",
+      "./src/path.js": "./src/path.js?v=10",
+      "./src/data.js": "./src/data.js?v=10",
+      "./src/game.js": "./src/game.js?v=10",
+      "./src/bot.js": "./src/bot.js?v=10",
+      "./src/scene.js": "./src/scene.js?v=10",
+      "./src/ui.js": "./src/ui.js?v=10",
+      "./src/sfx.js": "./src/sfx.js?v=10",
+      "./src/assets.js": "./src/assets.js?v=10"
     }
   }
   </script>
 </head>
 <body>
+  <div id="old" role="alert">Tarayıcın çok eski. Lütfen iOS 16.4+ / güncel Chrome kullan.</div>
   <div id="stage"><canvas id="board"></canvas></div>
   <div id="ui"></div>
   <button id="mute" type="button" aria-label="Sesi aç/kapat">🔊</button>
