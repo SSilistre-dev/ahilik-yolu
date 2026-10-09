@@ -1,7 +1,9 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES } from './data.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak kareyi seç', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
+const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
+// tapTile card preference: plain ilke card, then text card, then joker.
+const rank = id => (CARDS[id]?.joker ? 3 : CARDS[id]?.hasText ? 2 : 1);
 const money = p => p.trades.reduce((s, id) => s + CARDS[id].value, 0);
 const cityName = id => CITIES[id]?.name ?? id;
 // Engine dedupes identical cards in legalActions; compare cards by kind, not id.
@@ -34,22 +36,29 @@ const SLIDES = [
   { t: '3 · Şehre ulaş, rozet topla', imgs: ['city-ankara', 'ticaret-ankara-2'], p: 'Görev şehrine komşu kareye varınca ticareti tamamlarsın. Kazanç = para × rozet çarpanı.' },
 ];
 
-export function createUI(root, { onAction, onTileHighlight }) {
+// onLayout({top, bottom, right}) — all CSS px, measured against the viewport:
+//   top    = px from the viewport TOP covered by the HUD (chips + hint pill + goal band). The toast overlays just below it and is not counted.
+//   bottom = px from the viewport BOTTOM covered by the dock (hand + buttons) = innerHeight - dock visible top.
+//            On desktop (>900px) the dock is a right sidebar, so bottom = 0.
+//   right  = px from the viewport RIGHT covered by the sidebar (desktop only, else 0); #stage{right} CSS already accounts for it.
+// Called only when a value changed by >= 2px.
+export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   root.classList.add('ay-root');
-  root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-pill"></div></div>
-    <div class="ay-side"><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button></div>
-    <div class="ay-toasts"></div>
+  root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-pill"></div>
+      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button></div></div>
+      <div class="ay-toasts"></div></div>
     <div class="ay-dock"><div class="ay-handle ay-p" data-a="fold"></div><div class="ay-sub ay-p"></div><div class="ay-acts ay-p"></div><div class="ay-fan"></div></div>
     <div class="ay-modal" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div>`;
   const $ = s => root.querySelector(s);
-  const chipsEl = $('.ay-chips'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
+  const hudEl = $('.ay-hud'), goalEl = $('.ay-goal'), chipsEl = $('.ay-chips'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
     handleEl = $('.ay-handle'), subEl = $('.ay-sub'), actsEl = $('.ay-acts'), fanEl = $('.ay-fan'),
     modalEl = $('.ay-modal'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx');
 
   let st = null, legal = [], selected = null, passAsk = false, tradeOpen = false, trade = {};
+  let wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, startEl = null, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
 
-  const act = a => { passAsk = false; tradeOpen = false; trade = {}; selected = null; onAction(a); };
+  const act = a => { if (a.type === 'move' || a.type === 'kargo') wiggled = true; passAsk = false; tradeOpen = false; trade = {}; selected = null; onAction(a); };
   const has = t => legal.some(a => a.type === t);
   const human = () => st && !st.players[st.active].bot;
   const origin = () => root.getBoundingClientRect();
@@ -68,17 +77,38 @@ export function createUI(root, { onAction, onTileHighlight }) {
   }
 
   // ---------- HUD ----------
+  function hint() {
+    const p = st.players[st.active];
+    if (st.phase === 'over') return PHASE.over;
+    if (!human()) return `${p.name} oynuyor… (dokun: hızlandır)`;
+    if (has('readText') && p.pendingText) return 'Kartı sesli oku, +1 rozet';
+    if (st.phase !== 'move') return PHASE[st.phase] ?? st.phase;
+    if (selected) return CARDS[selected]?.kargo ? 'Uçmak istediğin şehri seç' : 'Parlayan kareye dokun';
+    if (legal.some(a => a.type === 'move' || a.type === 'kargo')) return 'Bir yol kartı seç ya da parlayan kareye dokun';
+    return has('endTurn') ? 'Hamle kalmadı → Turu Bitir' : has('pass') ? 'Hamle kalmadı → Pas geç' : PHASE.move;
+  }
+  function renderPill() {
+    pillEl.textContent = hint();
+    pillEl.classList.toggle('bot', !human() && st.phase !== 'over');
+  }
+  function renderGoal() {
+    const hp = st.players.find(p => !p.bot), t = hp?.task ? CARDS[hp.task] : null;
+    goalEl.classList.toggle('win', !!cel);
+    goalEl.hidden = !cel && !t;
+    goalEl.innerHTML = cel ? `<span class="gt">🎉 ${esc(cel)}</span>`
+      : t ? `${img(url(`city-${t.city}`), 'gimg', true)}<span class="gt">Hedef: ${esc(cityName(t.city))} · ${t.value}M</span>` : '';
+  }
   function renderHud() {
     chipsEl.innerHTML = st.players.map((p, i) => {
-      const t = p.task ? CARDS[p.task] : null;
+      const t = p.task ? CARDS[p.task] : null, full = i === st.active || !p.bot;
+      const stats = `<span class="ay-stat ay-bdg">${coin}${p.badges}</span><span class="ay-stat ay-mny">${money(p)}M</span>`;
+      if (!full) return `<div class="ay-chip mini" data-p="${i}" style="--pc:${p.color}"><i class="dot"></i><span class="ay-name">${esc(p.name)}</span>${stats}</div>`;
       return `<div class="ay-chip ${i === st.active ? 'active' : ''}" data-p="${i}" style="--pc:${p.color}">
         <div class="r1"><span class="ay-ring">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="ay-name">${esc(p.name)}</span></div>
-        <div class="r2"><span class="ay-stat ay-bdg">${coin}${p.badges}</span><span class="ay-stat ay-mny">${money(p)}M</span>${t
+        <div class="r2">${stats}${t
           ? img(cardArt(p.task), 'ay-note', true).replace('alt=""', `alt="Görev" title="Görev: ${esc(cityName(t.city))} ${t.value}M"`) : '<span class="ay-note none">–</span>'}</div></div>`;
     }).join('');
-    const p = st.players[st.active];
-    pillEl.textContent = st.phase === 'over' ? PHASE.over : human() ? PHASE[st.phase] ?? st.phase : `${p.name} oynuyor…`;
-    pillEl.classList.toggle('bot', !human() && st.phase !== 'over');
+    renderPill(); renderGoal();
   }
   const bump = pIdx => {
     for (const s of ['.ay-bdg', '.ay-mny']) {
@@ -91,8 +121,12 @@ export function createUI(root, { onAction, onTileHighlight }) {
   function renderActs() {
     const mine = human(), btn = [];
     if (mine) {
-      if (has('drawAhlak')) btn.push(`<button class="ay-btn primary big" data-a="draw">${img(url('ahlak-back'), 'ico', true)}<span>Ahlak Kartı Aç</span></button>`);
-      if (has('endTurn')) btn.push('<button class="ay-btn primary big" data-a="end"><span class="ico">➜</span><span>Turu Bitir</span></button>');
+      if (has('undo')) btn.push('<button class="ay-btn sm" data-a="undo" aria-label="Geri Al"><span class="ico">↶</span>Geri Al</button>');
+      if (has('drawAhlak')) btn.push(`<button class="ay-btn primary big pulse" data-a="draw">${img(url('ahlak-back'), 'ico', true)}<span>Ahlak Kartı Aç</span></button>`);
+      if (has('endTurn')) {
+        const moves = legal.some(a => a.type === 'move' || a.type === 'kargo');
+        btn.push(`<button class="ay-btn big ${moves ? '' : 'primary pulse'}" data-a="end"><span class="ico">➜</span><span>Turu Bitir</span></button>`);
+      }
       if (has('trade')) btn.push(`<button class="ay-btn ${tradeOpen ? 'sel' : ''}" data-a="trade"><span class="ico">⇄</span>Takas</button>`);
       if (has('pass')) btn.push(passAsk
         ? '<span class="ay-ask">Elini at, sıra bitsin?</span><button class="ay-btn danger" data-a="pass-yes">Evet, pas</button><button class="ay-btn" data-a="pass-no">Vazgeç</button>'
@@ -119,8 +153,10 @@ export function createUI(root, { onAction, onTileHighlight }) {
     const moveOk = new Set(legal.filter(a => a.type === 'move' || a.type === 'kargo').map(a => kind(a.card)));
     const mid = (n - 1) / 2;
     fanEl.style.setProperty('--n', n);
-    fanEl.innerHTML = p.hand.map((id, i) => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && st.phase === 'move' && !moveOk.has(kind(id)) ? 'dim' : ''}`,
-      `data-card="${id}"`, `--i:${i};--r:${((i - mid) * 4.2).toFixed(1)}deg;--y:${(((i - mid) ** 2) * 1.7).toFixed(1)}px`)).join('');
+    fanEl.style.setProperty('--step', n > 6 ? .6 : .74); // 7+ cards: overlap more so the fan fits 360px
+    const wig = mine && !wiggled && st.phase === 'move';
+    fanEl.innerHTML = p.hand.map((id, i) => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && st.phase === 'move' && !moveOk.has(kind(id)) ? 'dim' : ''} ${wig && moveOk.has(kind(id)) ? 'wig' : ''}`,
+      `data-card="${id}"`, `--i:${i};--r:${((i - mid) * (n > 6 ? 3 : 4.2)).toFixed(1)}deg;--y:${(((i - mid) ** 2) * (n > 6 ? .8 : 1.7)).toFixed(1)}px`)).join('');
   }
 
   function tradeHtml() {
@@ -164,9 +200,9 @@ export function createUI(root, { onAction, onTileHighlight }) {
     log.push(text); log = log.slice(-80);
     const t = document.createElement('div');
     t.className = 'ay-toast'; t.textContent = text;
-    toastEl.append(t);
-    while (toastEl.children.length > 3) toastEl.firstChild.remove();
-    setTimeout(() => t.remove(), 5200);
+    toastEl.replaceChildren(t); // one toast at a time, newest wins
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.remove(), 2500);
   }
   function renderDrawer() {
     drawerEl.innerHTML = `<div class="ay-sheet ay-p"><div class="ay-sheethead"><b>Oyun kaydı</b><button class="ay-btn sm" data-a="log">Kapat</button></div>
@@ -193,9 +229,10 @@ export function createUI(root, { onAction, onTileHighlight }) {
     let done = false;
     const finish = instant => {
       if (done) return; done = true; timers.forEach(clearTimeout); rv = null;
-      const end = () => { el.remove(); setSlot(id); if (!rm) slotEl.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 300 }); };
+      const end = () => { el.remove(); setSlot(id); slotEl.style.visibility = ''; if (!rm) slotEl.animate([{ transform: 'scale(1.35)' }, { transform: 'scale(1)' }], { duration: 300 }); };
       if (instant || rm || !flip) return end();
-      const a = card.getBoundingClientRect(), b = slotEl.getBoundingClientRect(), s = (b.width || 46) / a.width;
+      if (slotEl.hidden) { setSlot(id); slotEl.style.visibility = 'hidden'; }
+      const a = card.getBoundingClientRect(), b = slotEl.getBoundingClientRect(), s = (b.width || 40) / a.width;
       const dx = center(b).x - center(a).x, dy = center(b).y - center(a).y;
       el.querySelector('.rv-cap')?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
       card.animate([{ transform: 'none', opacity: 1 }, { transform: `translate(${dx}px,${dy}px) scale(${s})`, opacity: .9 }], { duration: 450, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' }).onfinish = end;
@@ -266,10 +303,13 @@ export function createUI(root, { onAction, onTileHighlight }) {
       selected = selected === t.dataset.card ? null : t.dataset.card;
       passAsk = false;
       fanEl.querySelectorAll('.ay-card').forEach(b => b.classList.toggle('sel', b.dataset.card === selected));
-      renderSub(); renderActs(); highlight(); return;
+      if (selected) wiggled = true;
+      fanEl.querySelectorAll('.wig').forEach(b => b.classList.remove('wig'));
+      renderPill(); renderSub(); renderActs(); highlight(); return;
     }
     const a = t.dataset.a, redo = () => { renderActs(); renderSub(); highlight(); };
     if (a === 'draw') act({ type: 'drawAhlak' });
+    else if (a === 'undo') act({ type: 'undo' });
     else if (a === 'end') act({ type: 'endTurn' });
     else if (a === 'read') act({ type: 'readText' });
     else if (a === 'new') act({ type: 'newGame' });
@@ -278,7 +318,7 @@ export function createUI(root, { onAction, onTileHighlight }) {
     else if (a === 'pass-yes') act({ type: 'pass' });
     else if (a === 'kargo') act({ type: 'kargo', card: selected, city: t.dataset.city });
     else if (a === 'trade') { tradeOpen = !tradeOpen; trade = {}; redo(); }
-    else if (a === 'fold') { handOpen = !handOpen; dockEl.classList.toggle('closed', !handOpen); renderHand(); }
+    else if (a === 'fold') { handOpen = !handOpen; dockEl.classList.toggle('closed', !handOpen); renderHand(); setTimeout(measure, 350); }
     else if (a === 'log') { drawerEl.hidden = !drawerEl.hidden; if (!drawerEl.hidden) renderDrawer(); }
     else if (a === 'slot') { if (lastAhlakId) reveal(lastAhlakId, { flip: false }); }
     else if (a === 'tr') {
@@ -292,9 +332,31 @@ export function createUI(root, { onAction, onTileHighlight }) {
   });
   drawerEl.addEventListener('click', e => { if (e.target === drawerEl) drawerEl.hidden = true; });
 
+  // ---------- Layout report ----------
+  let last = { top: -9, bottom: -9, right: -9 };
+  function measure() {
+    if (!onLayout || !st) return;
+    const H = innerHeight, top = Math.round(hudEl.getBoundingClientRect().bottom);
+    let bottom = 0, right = 0;
+    if (innerWidth > 900) right = Math.round(dockEl.getBoundingClientRect().width);
+    else {
+      let t = H;
+      for (const el of [handleEl, subEl, actsEl, fanEl]) if (!el.hidden && el.offsetParent !== null) t = Math.min(t, el.getBoundingClientRect().top + (el === fanEl ? 20 : 0));
+      bottom = Math.round(Math.max(0, H - t));
+    }
+    const v = { top, bottom, right };
+    if (Math.abs(v.top - last.top) >= 2 || Math.abs(v.bottom - last.bottom) >= 2 || Math.abs(v.right - last.right) >= 2) { last = v; onLayout(v); }
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(measure);
+    [hudEl, dockEl, handleEl, subEl, actsEl, fanEl].forEach(e => ro.observe(e));
+  }
+  addEventListener('resize', measure);
+
   return {
     render(state, legalActions = [], events = []) {
       st = state; legal = legalActions;
+      if (st.seed !== seed) { seed = st.seed; wiggled = false; cel = ''; }
       if (st.active !== lastActive) { lastActive = st.active; selected = null; passAsk = false; tradeOpen = false; trade = {}; }
       if (selected && (st.phase !== 'move' || !st.players[st.active].hand.includes(selected))) selected = null;
       let k = 0;
@@ -303,20 +365,37 @@ export function createUI(root, { onAction, onTileHighlight }) {
         if (ev.type === 'ahlak') {
           const id = ev.card || (/boş/.test(ev.text || '') ? null : st.decks?.ahlakDiscard?.at(-1));
           if (id) reveal(id, { caption: ev.text });
-        } else if (ev.type === 'trade') tradeFx(ev, 300 + 1500 * k++);
+        } else if (ev.type === 'trade') {
+          tradeFx(ev, 300 + 1500 * k++);
+          if (!st.players[ev.pIdx]?.bot) {
+            cel = `Ticaret tamam! +${ev.value ?? CARDS[ev.card]?.value ?? ''}M`;
+            clearTimeout(celebrate); celebrate = setTimeout(() => { cel = ''; if (st) renderGoal(); measure(); }, 2800);
+          }
+        }
       }
       renderHud(); renderHand(); renderActs(); renderSub(); renderModal(); highlight();
       if (!drawerEl.hidden) renderDrawer();
+      measure();
     },
     // Board tap forwarded by integrator. Returns true if it triggered an action.
     tapTile(idx) {
       if (!st || !human()) return false;
-      const a = st.phase === 'close' ? legal.find(l => l.type === 'closeTile' && l.tile === idx)
-        : st.phase === 'move' ? (st.tiles[idx]?.closed
-          ? legal.find(l => l.type === 'openRoad' && l.tile === idx)
-          : selected && legal.find(l => l.type === 'move' && kind(l.card) === kind(selected) && l.tile === idx)) : null;
+      let a;
+      if (st.phase === 'close') a = legal.find(l => l.type === 'closeTile' && l.tile === idx);
+      else if (st.phase === 'move') {
+        if (st.tiles[idx]?.closed) a = legal.find(l => l.type === 'openRoad' && l.tile === idx);
+        else if (selected) {
+          a = legal.find(l => l.type === 'move' && kind(l.card) === kind(selected) && l.tile === idx);
+          if (a) a = { ...a, card: selected };
+        } else { // tile-first: pick the card for the child (plain ilke > text card > joker)
+          const hand = st.players[st.active].hand;
+          const opts = legal.filter(l => l.type === 'move' && l.tile === idx)
+            .map(l => ({ l, id: hand.find(h => kind(h) === kind(l.card)) })).filter(o => o.id).sort((x, y) => rank(x.id) - rank(y.id));
+          if (opts[0]) a = { ...opts[0].l, card: opts[0].id };
+        }
+      }
       if (!a) return false;
-      act(a.type === 'move' ? { ...a, card: selected } : a); return true;
+      act(a); return true;
     },
     setLoading(p) {
       p = Math.max(0, Math.min(1, +p || 0));

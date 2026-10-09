@@ -3,13 +3,14 @@
 <title>UI önizleme</title><link rel="stylesheet" href="../style.css">
 <style>html,body{margin:0;height:100%;background:linear-gradient(135deg,#8a9a6a,#5d6e8a)}
 #dev{position:fixed;left:4px;top:42%;z-index:100;font:12px system-ui;max-width:60vw}#dev summary{background:#000a;color:#fff;padding:6px 10px;border-radius:8px;cursor:pointer;width:max-content}
-#dev div{display:flex;gap:4px;flex-wrap:wrap;background:#000b;padding:6px;border-radius:8px;margin-top:4px}#dev button{min-height:44px;font-size:12px}#ov{position:fixed;inset:0}</style></head>
-<body><div id="ov"></div><details id="dev"><summary>dev</summary><div></div></details>
+#dev div{display:flex;gap:4px;flex-wrap:wrap;background:#000b;padding:6px;border-radius:8px;margin-top:4px}#dev button{min-height:44px;font-size:12px}#ov{position:fixed;inset:0}#lay{position:fixed;right:4px;bottom:50%;z-index:100;background:#000b;color:#9f9;font:11px monospace;padding:3px 6px;border-radius:6px;pointer-events:none}</style></head>
+<body><div id="ov"></div><div id="lay">onLayout: –</div><details id="dev"><summary>dev</summary><div></div></details>
 <script type="module">
 import { createUI } from '../src/ui.js';
 const ui = createUI(document.getElementById('ov'), {
   onAction: a => console.log('onAction', JSON.stringify(a)),
-  onTileHighlight: t => console.log('onTileHighlight', JSON.stringify(t)) });
+  onTileHighlight: t => console.log('onTileHighlight', JSON.stringify(t)),
+  onLayout: v => { console.log('onLayout', JSON.stringify(v)); document.getElementById('lay').textContent = 'onLayout ' + JSON.stringify(v); } });
 window.ui = ui;
 const load = async n => (await fetch(`../fixtures/${n}.json`)).json();
 const ev = [{ type: 'ahlak', card: 'ahlak-comert-0', text: 'Sen olumlu ahlak kartı açtı: Cömert. Açık karelere rozet konuyor.' }, { type: 'move', text: 'Bot 1 Disiplinli karesine ilerledi.' }, { type: 'trade', card: 'ticaret-ankara-4', pIdx: 0, city: 'ankara', value: 2, text: 'Sen Ankara ticaretini tamamladı (2M).' }];
@@ -29,6 +30,11 @@ const sets = {
     s.tiles[8].closed = true; return [s, midLegal, evq]; },
   'sen (okuma yok)': async () => { const s = await load('mid'); s.active = 0; s.players[0].hand.push('yol-kargo-1', 'yol-comert-0'); s.tiles[8].closed = true; return [s, midLegal.filter(a => a.type !== 'readText'), evq]; },
   'close fazi': async () => { const s = await load('mid'); s.active = 0; s.phase = 'close'; return [s, [{ type: 'closeTile', tile: 6 }, { type: 'closeTile', tile: 11 }], [{ type: 'ahlak', card: 'ahlak-comert-neg', text: 'Olumsuz: Cimri! Bir Cömert kareyi kapat.' }]]; },
+  'ahlak fazı': async () => { const s = await load('mid'); s.active = 0; s.phase = 'ahlak'; return [s, [{ type: 'drawAhlak' }], []]; },
+  'hamle yok': async () => { const s = await load('mid'); s.active = 0; return [s, [{ type: 'endTurn' }, { type: 'pass' }], []]; },
+  'undo': async () => { const s = await load('mid'); s.active = 0; return [s, [...midLegal.filter(a => a.type !== 'readText'), { type: 'undo' }], []]; },
+  '9 kart': async () => { const s = await load('mid'); s.active = 0; s.players[0].hand.push('yol-kargo-1', 'yol-ahievran-1', 'yol-comert-0', 'yol-durust-3', 'yol-bilgili-3', 'yol-tokgozlu-3'); return [s, midLegal.filter(a => a.type !== 'readText'), []]; },
+  'görev yok': async () => { const s = await load('mid'); s.active = 0; s.players[0].task = null; return [s, midLegal.filter(a => a.type !== 'readText'), []]; },
   over: async () => { const s = await load('over'); s.__score = sc; return [s, [], []]; },
 };
 const dev = document.querySelector('#dev div');
@@ -46,5 +52,7 @@ mk('ahlak −', async () => { const s = await cur(); ui.render(s[0], s[1], [{ ty
 mk('flyCoins', () => ui.flyCoins({ x: innerWidth / 2, y: innerHeight / 2 }, 1, 4));
 mk('trade fly', async () => { const s = await cur(); ui.render(s[0], s[1], [ev[2]]); });
 mk('loading', () => { let p = 0; const t = setInterval(() => { p += .08; ui.setLoading(p); if (p >= 1) clearInterval(t); }, 150); });
+mk('tile-first (kare 5)', async () => { const s = await sets['sen (okuma yok)'](); ui.render(s[0], s[1], []); console.log('tapTile(5) ->', ui.tapTile(5)); });
+mk('celebrate', async () => { const s = await cur(); ui.render(s[0], s[1], [{ type: 'trade', card: 'ticaret-kayseri-1', pIdx: 0, value: 2, text: 'Sen Kayseri ticaretini tamamladı (2M).' }]); });
 sets['mid (sen aktif)']().then(a => ui.render(a[0], a[1], []));
 </script></body></html>
