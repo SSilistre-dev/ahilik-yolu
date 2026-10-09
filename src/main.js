@@ -25,7 +25,8 @@ scene.ready?.then(() => ui.setLoading?.(1), () => ui.setLoading?.(1));
 
 // Kamera odağı: yalnız insan oyuncunun hamle/kapatma aşamasında.
 function focusOf() {
-  if (!state || (state.phase !== 'move' && state.phase !== 'close')) return null;
+  // Close targets can be anywhere on the board, so zoom only while moving.
+  if (!state || state.phase !== 'move') return null;
   const p = state.players[state.active];
   return p && !p.bot ? p.pos : null;
 }
@@ -87,6 +88,9 @@ if (mute) {
   const paint = () => { mute.textContent = sfx.muted ? '🔇' : '🔊'; mute.setAttribute('aria-pressed', String(sfx.muted)); };
   mute.addEventListener('click', () => { sfx.setMuted(!sfx.muted); paint(); if (!sfx.muted) sfx.play('click'); });
   paint();
+  // Sit in the UI side column (under the log button) so it never covers player chips.
+  const side = document.querySelector(".ay-side");
+  if (side) { mute.className = "ay-round ay-p"; side.prepend(mute); }
 }
 
 ui.showStart(start);
