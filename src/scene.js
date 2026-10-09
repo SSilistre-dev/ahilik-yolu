@@ -417,18 +417,23 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   // ----- camera: always frames the whole board inside the free area between UI insets -----
   const fitPts = [];
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) { fitPts.push(V3(sx * HALF, -0.16, sz * HALF), V3(sx * 2.2, 1.65, sz * 2.2), V3(sx * 2.6, 1.65, sz * 2.2)); }
+  const gridPts = []; // portrait: fit the 5x5 tile grid only (frame/decor may crop off-screen)
+  for (const sx of [-1, 1]) { gridPts.push(V3(sx * 2.72, 0.14, 2.72), V3(sx * 2.72, 0.14, -2.72), V3(sx * 2.4, 1.0, -2.4)); }
+  let pts = fitPts;
   const ins = { top: 0, bottom: 0, right: 0 }; // displayed (animated) insets, CSS px
   let vw = 1, vh = 1;
   const ndcBox = () => {
     camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    for (const c of fitPts) { const p = c.clone().project(camera); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+    for (const c of pts) { const p = c.clone().project(camera); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
     return [x0, x1, y0, y1];
   };
   function fitCamera() {
-    const w = vw, h = vh, fw = Math.max(40, w - ins.right), fh = Math.max(40, h - ins.top - ins.bottom), K = 0.92;
+    const w = vw, h = vh, fw = Math.max(40, w - ins.right), fh = Math.max(40, h - ins.top - ins.bottom);
+    const portrait = fw / fh < 1; pts = portrait ? gridPts : fitPts;
+    const K = portrait ? 1 - 16 / fw : 0.92; // portrait: ~8px gutters
     const cx = fw / 2, cy = ins.top + fh / 2;
-    const el = 0.95 + 0.15 * THREE.MathUtils.clamp((0.95 - fw / fh) / 0.35, 0, 1); // portrait free area: steeper
+    const el = portrait ? 1.2 : 0.95 + 0.15 * THREE.MathUtils.clamp((0.95 - fw / fh) / 0.35, 0, 1); // portrait free area: steeper
     camera.aspect = w / h; camera.clearViewOffset();
     const dir = V3(0, Math.sin(el), Math.cos(el)); let d = 14, box;
     for (let i = 0; i < 6; i++) { // perspective is near-linear in distance: converges in a few steps
