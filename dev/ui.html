@@ -7,6 +7,8 @@
 <body><div id="ov"></div><div id="lay">onLayout: –</div><details id="dev"><summary>dev</summary><div></div></details>
 <script type="module">
 import { createUI } from '../src/ui.js';
+// Rehber yalnız ?tut ile açılır (aksi halde dev önizlemeyi kapatmasın).
+try { if (!location.search.includes('tut')) localStorage.setItem('ahilik.tutorial.done', '1'); else localStorage.removeItem('ahilik.tutorial.done'); } catch {}
 const ui = createUI(document.getElementById('ov'), {
   onAction: a => console.log('onAction', JSON.stringify(a)),
   onTileHighlight: t => console.log('onTileHighlight', JSON.stringify(t)),
@@ -53,6 +55,8 @@ mk('flyCoins', () => ui.flyCoins({ x: innerWidth / 2, y: innerHeight / 2 }, 1, 4
 mk('trade fly', async () => { const s = await cur(); ui.render(s[0], s[1], [ev[2]]); });
 mk('loading', () => { let p = 0; const t = setInterval(() => { p += .08; ui.setLoading(p); if (p >= 1) clearInterval(t); }, 150); });
 mk('tile-first (kare 5)', async () => { const s = await sets['sen (okuma yok)'](); ui.render(s[0], s[1], []); console.log('tapTile(5) ->', ui.tapTile(5)); });
+mk('yardım (?)', () => ui.tutorial.openHelp());
+mk('rehberi oynat', async () => { await cur(); ui.tutorial.replay(); });
 mk('celebrate', async () => { const s = await cur(); ui.render(s[0], s[1], [{ type: 'trade', card: 'ticaret-kayseri-1', pIdx: 0, value: 2, text: 'Sen Kayseri ticaretini tamamladı (2M).' }]); });
 sets['mid (sen aktif)']().then(a => ui.render(a[0], a[1], []));
 </script></body></html>

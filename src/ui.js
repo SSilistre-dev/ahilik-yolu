@@ -1,4 +1,5 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES } from './data.js';
+import { createTutorial } from './tutorial.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -45,7 +46,7 @@ const SLIDES = [
 export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   root.classList.add('ay-root');
   root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-pill"></div>
-      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button></div></div>
+      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button></div></div>
       <div class="ay-toasts"></div></div>
     <div class="ay-dock"><div class="ay-handle ay-p" data-a="fold"></div><div class="ay-sub ay-p"></div><div class="ay-acts ay-p"></div><div class="ay-fan"></div></div>
     <div class="ay-modal" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div>`;
@@ -58,6 +59,8 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   let wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, startEl = null, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
 
+  const tut = createTutorial(root, { art: cardArt, url });
+  const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected };
   const act = a => { if (a.type === 'move' || a.type === 'kargo') wiggled = true; passAsk = false; tradeOpen = false; trade = {}; selected = null; onAction(a); };
   const has = t => legal.some(a => a.type === t);
   const human = () => st && !st.players[st.active].bot;
@@ -305,7 +308,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       fanEl.querySelectorAll('.ay-card').forEach(b => b.classList.toggle('sel', b.dataset.card === selected));
       if (selected) wiggled = true;
       fanEl.querySelectorAll('.wig').forEach(b => b.classList.remove('wig'));
-      renderPill(); renderSub(); renderActs(); highlight(); return;
+      renderPill(); renderSub(); renderActs(); highlight(); tut.update(st, legal, [], tutEls); return;
     }
     const a = t.dataset.a, redo = () => { renderActs(); renderSub(); highlight(); };
     if (a === 'draw') act({ type: 'drawAhlak' });
@@ -319,6 +322,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     else if (a === 'kargo') act({ type: 'kargo', card: selected, city: t.dataset.city });
     else if (a === 'trade') { tradeOpen = !tradeOpen; trade = {}; redo(); }
     else if (a === 'fold') { handOpen = !handOpen; dockEl.classList.toggle('closed', !handOpen); renderHand(); setTimeout(measure, 350); }
+    else if (a === 'help') tut.openHelp();
     else if (a === 'log') { drawerEl.hidden = !drawerEl.hidden; if (!drawerEl.hidden) renderDrawer(); }
     else if (a === 'slot') { if (lastAhlakId) reveal(lastAhlakId, { flip: false }); }
     else if (a === 'tr') {
@@ -376,7 +380,9 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       renderHud(); renderHand(); renderActs(); renderSub(); renderModal(); highlight();
       if (!drawerEl.hidden) renderDrawer();
       measure();
+      tut.update(st, legal, events, tutEls);
     },
+    tutorial: tut,
     // Board tap forwarded by integrator. Returns true if it triggered an action.
     tapTile(idx) {
       if (!st || !human()) return false;
