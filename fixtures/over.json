@@ -490,5 +490,10 @@
    "ticaret-kayseri-5",
    "ticaret-kayseri-6"
   ]
- }
+ },
+ "moveDone": false,
+ "pending": null,
+ "declined": [],
+ "offersThisTurn": 0,
+ "roadTries": 0
 }

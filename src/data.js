@@ -63,4 +63,4 @@ for (const city of Object.keys(CITIES)) {
 
 export const HAND_SIZE = 6;
 export const AWARD_START = 4;
-export const PLAYER_COLORS = ['#d0302b', '#2f5fb3', '#5aa832', '#f5c518'];
+export const PLAYER_COLORS = ['#d0302b', '#2f5fb3', '#5aa832', '#f5c518', '#e0479e', '#8a5a2b'];
