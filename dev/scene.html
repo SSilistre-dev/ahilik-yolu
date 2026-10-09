@@ -5,18 +5,18 @@
 <style>html,body{margin:0;height:100%;background:#222;font:14px sans-serif}
 #v{position:fixed;inset:0}#bar{position:fixed;top:0;left:0;right:0;z-index:2;display:flex;gap:6px;flex-wrap:wrap;padding:6px}
 #info{position:fixed;left:6px;bottom:6px;z-index:2;color:#fff;background:#0008;padding:4px 8px;font:12px monospace;white-space:pre}
-#dot{position:fixed;z-index:3;width:10px;height:10px;margin:-5px;border-radius:50%;background:#0ff;display:none;pointer-events:none}</style>
+#bar[hidden]{display:none}#dot{position:fixed;z-index:3;width:10px;height:10px;margin:-5px;border-radius:50%;background:#0ff;display:none;pointer-events:none}</style>
 </head><body>
 <div id="bar"></div><div id="v"><canvas id="c"></canvas></div><div id="info"></div><div id="dot"></div>
 <script type="module">
 import { createScene } from '../src/scene.js';
-import { neighbors } from '../src/data.js';
-let state = null, hl = [], focus = null;
+import { neighbors, CITIES } from '../src/data.js';
+let state = null, hl = [], goal = null, path = [];
 const info = document.getElementById('info');
 const sc = createScene(document.getElementById('c'), { onTileTap: (i) => { console.log('tap', i); info.textContent = 'tap ' + i; }, onProgress: (p) => { info.textContent = 'load ' + Math.round(p * 100) + '%'; } });
-window.sc = sc; window.setFocus = (f) => { focus = f; draw(); };
-const draw = () => state && sc.render(state, { highlight: hl, focus });
-async function load(n) { state = await (await fetch(`../fixtures/${n}.json`)).json(); hl = []; focus = null; draw(); }
+window.sc = sc;
+const draw = () => state && sc.render(state, { highlight: hl, goal, path });
+async function load(n) { state = await (await fetch(`../fixtures/${n}.json`)).json(); hl = []; goal = null; path = []; draw(); }
 function move() {
   if (!state) return;
   state = structuredClone(state);
@@ -24,7 +24,7 @@ function move() {
   const opts = neighbors(p.pos).filter((i) => !state.tiles[i].closed);
   const to = opts[Math.floor(Math.random() * opts.length)];
   from.occupants = from.occupants.filter((x) => x !== 0);
-  state.tiles[to].occupants.push(0); p.pos = to; hl = []; if (focus !== null) focus = to; draw();
+  state.tiles[to].occupants.push(0); p.pos = to; hl = []; path = []; draw();
 }
 function toggleClosed() {
   state = structuredClone(state);
@@ -34,9 +34,25 @@ function toggleClosed() {
 function addBadge() { state = structuredClone(state); const t = state.tiles[7]; t.badges += 1; draw(); }
 const stats = () => { const i = sc.info(); info.textContent = `calls ${i.calls}  tris ${i.triangles}  geos ${i.geometries}  tex ${i.textures}`; };
 const hlNb = () => { if (state) { hl = neighbors(state.players[0].pos); draw(); } };
-for (const [t, f] of [['start', () => load('start')], ['mid', () => load('mid')], ['over', () => load('over')], ['move p0', move], ['highlight nb', hlNb], ['clear hl', () => { hl = []; draw(); }],
-  ['focus p0', () => { focus = state.players[0].pos; draw(); }], ['focus off', () => { focus = null; draw(); }], ['toggle closed', toggleClosed], ['+badge', addBadge], ['info', stats]]) {
-  const b = document.createElement('button'); b.textContent = t; b.onclick = f; document.getElementById('bar').append(b);
+// BFS over open ilke tiles from player 0 to a tile next to the goal city (excludes start tile)
+function pathDemo() {
+  if (!state || goal == null) return;
+  const start = state.players[0].pos, ok = (i) => state.tiles[i].kind === 'ilke' && !state.tiles[i].closed, prev = new Map([[start, null]]), q = [start];
+  let end = neighbors(goal).includes(start) ? start : null;
+  while (q.length && end === null) {
+    const c = q.shift();
+    for (const n of neighbors(c)) if (!prev.has(n) && ok(n)) { prev.set(n, c); if (neighbors(goal).includes(n)) { end = n; break; } q.push(n); }
+  }
+  path = []; for (let c = end; c !== null && c !== start; c = prev.get(c)) path.unshift(c);
+  draw(); info.textContent = 'path ' + path.join('>');
 }
+const ins = (top, bottom, right = 0) => () => sc.setInsets({ top, bottom, right });
+const btns = [['start', () => load('start')], ['mid', () => load('mid')], ['over', () => load('over')], ['move p0', move], ['highlight nb', hlNb], ['clear hl', () => { hl = []; draw(); }],
+  ['insets HUD/dock', ins(150, 300)], ['insets right 400', ins(0, 0, 400)], ['insets none', ins(0, 0)],
+  ...Object.entries(CITIES).map(([id, c]) => ['goal ' + id, () => { goal = c.tile; draw(); }]), ['goal off', () => { goal = null; path = []; draw(); }],
+  ['path demo', pathDemo], ['path off', () => { path = []; draw(); }], ['toggle closed', toggleClosed], ['+badge', addBadge], ['info', stats]];
+for (const [t, f] of btns) { const b = document.createElement('button'); b.textContent = t; b.onclick = f; document.getElementById('bar').append(b); }
+window.dev = { load, setGoal: (g) => { goal = g; draw(); }, pathDemo, hlNb, ins: (t, b, r = 0) => sc.setInsets({ top: t, bottom: b, right: r }), stats, clearHl: () => { hl = []; draw(); } };
+if (new URLSearchParams(location.search).has('nobar')) document.getElementById('bar').hidden = true;
 sc.ready.then(() => { load(new URLSearchParams(location.search).get('f') || 'mid').then(() => setTimeout(stats, 600)); });
 </script></body></html>

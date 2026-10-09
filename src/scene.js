@@ -2,13 +2,14 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ILKELER, CITIES, BOARD } from './data.js';
+import { ILKELER, CITIES, BOARD, neighbors } from './data.js';
 import { MODELS, CARD_ART } from './assets.js';
 
 const P = 1.1;                     // tile pitch
 const HALF = 3.25;                 // terrain plate half size
 const BASE_H = 0.1, CITY_H = 0.14; // tile top heights
 const ART = 0.7, ART_OFF = 0.07;   // printed art plate size and shift toward the camera
+const PULSE_MS = 33;               // goal/highlight pulse redraw interval (~30 fps)
 const IDLE_MS = 66;                // idle animation redraw interval (~15 fps)
 const tileX = (c) => (c - 2) * P, tileZ = (r) => (r - 2) * P;
 const topOf = (t) => (t.kind === 'city' ? CITY_H : BASE_H);
@@ -358,28 +359,95 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     return V3(bx + Math.cos(a) * r, topOf(t), bz + Math.sin(a) * r);
   }
 
-  // ----- camera -----
-  const dir = V3(0, Math.sin(0.95), Math.cos(0.95));
-  const fitPts = [];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { fitPts.push(V3(sx * HALF, -0.16, sz * HALF), V3(sx * 2.2, 1.65, sz * 2.2)); }
-  let fitD = 12;
-  const cam = { tx: 0, tz: 0, k: 1 };
-  function applyCam() {
-    const tgt = V3(cam.tx, 0, cam.tz);
-    camera.position.copy(dir).multiplyScalar(fitD / cam.k).add(tgt); camera.lookAt(tgt); camera.updateMatrixWorld();
+  // ----- goal flag + path trail -----
+  const GOLD = 0xffb000;
+  const goalG = new THREE.Group(); goalG.visible = false; scene.add(goalG);
+  const POLE_H = 1.4, clothGeo = new THREE.PlaneGeometry(0.62, 0.38, 8, 2).translate(0.31, 0, 0), clothBase = clothGeo.attributes.position.array.slice();
+  const flagMat = new THREE.MeshBasicMaterial({ color: GOLD, side: THREE.DoubleSide, toneMapped: false });
+  const cloth = new THREE.Mesh(clothGeo, flagMat); cloth.position.set(0.02, POLE_H - 0.21, 0);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, POLE_H, 8).translate(0, POLE_H / 2, 0), new THREE.MeshBasicMaterial({ color: 0xfff0b0 }));
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), flagMat); knob.position.y = POLE_H + 0.02;
+  const ringTex = canvasTex(128, 128, (g, s) => { g.shadowColor = '#ffb000'; g.shadowBlur = 10; g.strokeStyle = '#f09a00'; g.lineWidth = 9; g.beginPath(); g.arc(s / 2, s / 2, 44, 0, 7); g.stroke(); });
+  const goalRing = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false }));
+  goalRing.position.y = 0.04; goalRing.renderOrder = 4;
+  const flagBase = new THREE.Group(); flagBase.position.set(0, 0.0, 0.42); flagBase.add(pole, cloth, knob); goalG.add(flagBase, goalRing);
+  let goalOn = false;
+  function animGoal(now) {
+    const pa = clothGeo.attributes.position;
+    for (let i = 0; i < pa.count; i++) { const x = clothBase[i * 3]; pa.setZ(i, Math.sin(x * 9 - now / 160) * 0.05 * (x / 0.62)); pa.setY(i, clothBase[i * 3 + 1] + Math.sin(x * 7 - now / 200) * 0.012 * x / 0.62); }
+    pa.needsUpdate = true;
+    const k = 0.5 + 0.5 * Math.sin(now / 330);
+    goalRing.scale.setScalar(0.85 + 0.22 * k); goalRing.material.opacity = 0.5 + 0.5 * (1 - k);
+    flagBase.position.y = 0.02 + 0.03 * k;
   }
-  function fitCamera(w, h) {
-    camera.aspect = w / h;
-    const el = camera.aspect < 0.8 ? 1.1 : 0.95; // portrait phones: steeper (63 deg) so the board uses more of the height
-    dir.set(0, Math.sin(el), Math.cos(el));
-    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), tx = ty * camera.aspect, k = 0.9;
-    camera.position.copy(dir).multiplyScalar(10); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
-    let d = 0;
-    for (const c of fitPts) {
-      const p = c.clone().applyMatrix4(camera.matrixWorldInverse), zrel = p.z + 10;
-      d = Math.max(d, Math.abs(p.x) / (tx * k) + zrel, Math.abs(p.y) / (ty * k) + zrel);
+  function setGoal(idx) {
+    goalOn = idx != null && idx >= 0 && idx < 25;
+    goalG.visible = goalOn;
+    if (goalOn) { const t = BOARD[idx]; goalG.position.set(tileX(t.c), CITY_H, tileZ(t.r)); }
+  }
+  // dotted trail: pawn tile -> path tiles -> goal city, one InstancedMesh of flat discs
+  const MAX_DOTS = 120, DOT_STEP = 0.32;
+  const dotGeo = mergeGeometries([paint(new THREE.CircleGeometry(0.1, 14).rotateX(-Math.PI / 2), 0x6b3a0c), paint(new THREE.CircleGeometry(0.068, 14).rotateX(-Math.PI / 2).translate(0, 0.003, 0), 0xffb52e)]);
+  const trail = new THREE.InstancedMesh(dotGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92, depthWrite: false }), MAX_DOTS);
+  trail.frustumCulled = false; trail.count = 0; trail.renderOrder = 3; scene.add(trail);
+  let trailKey = '';
+  function setPath(state, path, goal) {
+    const pts = (path || []).slice();
+    if (pts.length && goal != null && pts[pts.length - 1] !== goal) pts.push(goal);
+    let from = null;
+    if (pts.length) { // trail starts at the pawn standing next to the first path tile (active player preferred)
+      const nb = neighbors(pts[0]), order = [state.active, ...state.players.map((_, i) => i)];
+      for (const p of order) if (state.players[p] && nb.includes(state.players[p].pos)) { from = state.players[p].pos; break; }
+      if (from !== null) pts.unshift(from);
     }
-    fitD = d; camera.updateProjectionMatrix(); applyCam();
+    const key = pts.join(',');
+    if (key === trailKey) return;
+    trailKey = key; let n = 0;
+    const at = (i) => { const t = BOARD[i]; return [tileX(t.c), tileZ(t.r), topOf(t) + 0.012]; };
+    for (let i = 0; i + 1 < pts.length && n < MAX_DOTS; i++) {
+      const [x0, z0, y0] = at(pts[i]), [x1, z1, y1] = at(pts[i + 1]), len = Math.hypot(x1 - x0, z1 - z0), steps = Math.max(1, Math.round(len / DOT_STEP));
+      for (let k = i ? 1 : 0; k <= steps && n < MAX_DOTS; k++) {
+        const u = k / steps, big = k === steps ? 1.5 : 1; // tile-centre dots slightly bigger
+        M.compose(V3(x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, z0 + (z1 - z0) * u), Q.identity(), V3(big, 1, big)); trail.setMatrixAt(n++, M);
+      }
+    }
+    trail.count = n; trail.instanceMatrix.needsUpdate = true;
+  }
+
+  // ----- camera: always frames the whole board inside the free area between UI insets -----
+  const fitPts = [];
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { fitPts.push(V3(sx * HALF, -0.16, sz * HALF), V3(sx * 2.2, 1.65, sz * 2.2), V3(sx * 2.6, 1.65, sz * 2.2)); }
+  const ins = { top: 0, bottom: 0, right: 0 }; // displayed (animated) insets, CSS px
+  let vw = 1, vh = 1;
+  const ndcBox = () => {
+    camera.updateMatrixWorld(); camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const c of fitPts) { const p = c.clone().project(camera); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+    return [x0, x1, y0, y1];
+  };
+  function fitCamera() {
+    const w = vw, h = vh, fw = Math.max(40, w - ins.right), fh = Math.max(40, h - ins.top - ins.bottom), K = 0.92;
+    const cx = fw / 2, cy = ins.top + fh / 2;
+    const el = 0.95 + 0.15 * THREE.MathUtils.clamp((0.95 - fw / fh) / 0.35, 0, 1); // portrait free area: steeper
+    camera.aspect = w / h; camera.clearViewOffset();
+    const dir = V3(0, Math.sin(el), Math.cos(el)); let d = 14, box;
+    for (let i = 0; i < 6; i++) { // perspective is near-linear in distance: converges in a few steps
+      camera.position.copy(dir).multiplyScalar(d); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix();
+      box = ndcBox();
+      d *= Math.max((box[1] - box[0]) / (2 * K * fw / w), (box[3] - box[2]) / (2 * K * fh / h));
+    }
+    camera.position.copy(dir).multiplyScalar(d); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix(); box = ndcBox();
+    const sx = cx - ((box[0] + box[1]) / 2 + 1) / 2 * w, sy = cy - (1 - (box[2] + box[3]) / 2) / 2 * h; // px to shift the board centre onto the free-area centre
+    camera.setViewOffset(w, h, -sx, -sy, w, h); camera.updateMatrixWorld();
+  }
+  let insTo = { top: 0, bottom: 0, right: 0 }, camReady = false;
+  function setInsets({ top = 0, bottom = 0, right = 0 } = {}) {
+    const to = { top: Math.max(0, top), bottom: Math.max(0, bottom), right: Math.max(0, right) };
+    if (to.top === insTo.top && to.bottom === insTo.bottom && to.right === insTo.right) return;
+    insTo = to;
+    if (!camReady || first) { Object.assign(ins, to); fitCamera(); kick(); return; }
+    const from = { ...ins };
+    anim('ins', 300, (u) => { const e = u * u * (3 - 2 * u); for (const k in to) ins[k] = from[k] + (to[k] - from[k]) * e; fitCamera(); });
   }
 
   // ----- animation loop (on demand; throttled idle loop only while character animations exist) -----
@@ -421,27 +489,21 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   function frame(now) {
     raf = 0;
     if (disposed) return;
-    const busy = anims.size > 0 || pulse || yawBusy();
-    if (!busy && now - lastT < IDLE_MS) { raf = requestAnimationFrame(frame); return; }
+    const busy = anims.size > 0 || yawBusy();
+    if (!busy && now - lastT < (pulse || goalOn ? PULSE_MS : IDLE_MS)) { raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000)); lastT = now;
     for (const [k, a] of anims) { const u = Math.min(1, Math.max(0, (now - a.t0) / a.dur)); a.fn(u); if (u >= 1) anims.delete(k); }
     for (const p of pawns) { p.yaw += wrap(p.yawT - p.yaw) * Math.min(1, dt * 14); p.body.rotation.y = p.yaw; if (p.mixer) p.mixer.update(dt); }
     if (pulse) glow.opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now / 220)); else glow.opacity = 1;
+    if (goalOn) animGoal(now);
     layout(now);
     renderer.render(scene, camera);
-    if (anims.size || pulse || yawBusy() || idleLoop()) raf = requestAnimationFrame(frame);
+    if (anims.size || pulse || goalOn || yawBusy() || idleLoop()) raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && !disposed) raf = requestAnimationFrame(frame); }
 
   // ----- state sync -----
-  let first = true, pending = null, curFocus = undefined;
-  function focusTo(idx) {
-    if (idx === curFocus) return;
-    curFocus = idx;
-    const from = { ...cam }, to = idx == null ? { tx: 0, tz: 0, k: 1 } : { tx: tileX(BOARD[idx].c) * 0.8, tz: tileZ(BOARD[idx].r) * 0.8, k: 1.4 };
-    if (first) { Object.assign(cam, to); applyCam(); return; }
-    anim('cam', 400, (u) => { const e = u * u * (3 - 2 * u); cam.tx = from.tx + (to.tx - from.tx) * e; cam.tz = from.tz + (to.tz - from.tz) * e; cam.k = from.k + (to.k - from.k) * e; applyCam(); });
-  }
+  let first = true, pending = null;
   function hop(pw, i, to) {
     const from = pw.root.position.clone(), d = from.distanceTo(to);
     const dur = d < 0.5 ? 220 : d < 1.8 ? 400 : Math.min(900, 400 + d * 120), h = d < 0.5 ? 0.03 : d < 1.8 ? 0.14 : Math.min(0.8, 0.3 + d * 0.18), walk = d >= 0.5;
@@ -453,8 +515,9 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
       if (u >= 1) { pw.root.position.copy(to); pw.yawT = 0; if (walk) setWalk(pw, false); }
     });
   }
-  function render(state, { highlight = [], focus = null } = {}) {
-    if (!built) { pending = [state, { highlight, focus }]; hl = highlight; pulse = highlight.length > 0; kick(); return; }
+  function render(state, { highlight = [], goal = null, path = [] } = {}) { // any `focus` option is ignored: camera always frames the board
+    if (!built) { pending = [state, { highlight, goal, path }]; hl = highlight; pulse = highlight.length > 0; kick(); return; }
+    setGoal(goal); setPath(state, path, goal);
     state.players.forEach((pl, i) => {
       const to = pawnTarget(state, i);
       let pw = pawns[i];
@@ -476,7 +539,6 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
       }
     }
     hl = highlight; pulse = highlight.length > 0;
-    focusTo(focus == null ? null : focus);
     first = false; kick();
   }
 
@@ -484,9 +546,9 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   const parent = canvas.parentElement || canvas;
   function resize() {
     const w = Math.max(1, parent.clientWidth), h = Math.max(1, parent.clientHeight);
-    renderer.setSize(w, h, false); fitCamera(w, h); kick();
+    renderer.setSize(w, h, false); vw = w; vh = h; fitCamera(); kick();
   }
-  const ro = new ResizeObserver(resize); ro.observe(parent); resize();
+  const ro = new ResizeObserver(resize); ro.observe(parent); resize(); camReady = true;
   layout(0);
 
   // ----- picking: pointerdown/up closer than 8px = tap; pawns/cities get a screen-space proxy, otherwise ground plane -----
@@ -529,7 +591,7 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   }).catch((e) => { console.error(e); onProgress && onProgress(1); });
 
   function dispose() {
-    disposed = true; cancelAnimationFrame(raf); raf = 0; anims.clear(); pulse = false;
+    disposed = true; cancelAnimationFrame(raf); raf = 0; anims.clear(); pulse = goalOn = false;
     ro.disconnect();
     canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel);
     pawns.forEach((p) => p.mixer && p.mixer.stopAllAction());
@@ -541,5 +603,5 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     scene.clear(); renderer.dispose();
   }
   const info = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
-  return { ready, render, projectTile, dispose, info }; // info(): dev-only stats
+  return { ready, render, setInsets, projectTile, dispose, info }; // info(): dev-only stats
 }
