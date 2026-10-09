@@ -102,3 +102,4 @@ Bunlar dışında sorma; port doluysa boş port seç ve söyle.
 - 2026-10-09 — Ana canvas'ın ebeveyni boyutsuzdu, sahne şerit olarak render edildi — canvas `#stage` (position:fixed; inset:0) içinde durur, scene ResizeObserver'ı ebeveyni ölçer.
 - 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı (test yanıltıcı) — her JS/CSS değişikliğinden sonra importmap `?v=` artırılır, sonra test edilir.
 - 2026-10-09 — Alt ajan commit'i git hook ile engelli; worktree ajanları değişikliği bırakır, ana oturum commit + merge eder.
+- 2026-10-09 — `<script type=module src=main.js>` importmap'i atlıyor, main.js versiyonsuz kaldı ve SW eski kopyayı verdi — giriş modülü inline `import "./src/main.js"` ile yüklenir; `?v=` index.html ve `sw.js` V ile birlikte artırılır.
