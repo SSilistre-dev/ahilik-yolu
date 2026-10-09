@@ -4,6 +4,8 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak kare seç', move: 'Piyonunu ilerlet', over: 'Oyun bitti' };
 const money = p => p.trades.reduce((s, id) => s + CARDS[id].value, 0);
 const cityName = id => CITIES[id]?.name ?? id;
+// Engine dedupes identical cards in legalActions; compare cards by kind, not id.
+const kind = id => { const c = CARDS[id]; return c?.joker ? "J" : c?.kargo ? "K" : `${c?.ilke}${c?.hasText ? "T" : ""}`; };
 
 function cardView(id) {
   const c = CARDS[id];
@@ -36,7 +38,7 @@ export function createUI(root, { onAction, onTileHighlight }) {
     let tiles = [];
     if (human() && st.phase === 'close') tiles = legal.filter(a => a.type === 'closeTile').map(a => a.tile);
     else if (human() && st.phase === 'move') {
-      tiles = legal.filter(a => a.type === 'move' && (!selected || a.card === selected)).map(a => a.tile);
+      tiles = legal.filter(a => a.type === 'move' && (!selected || kind(a.card) === kind(selected))).map(a => a.tile);
       tiles.push(...legal.filter(a => a.type === 'openRoad').map(a => a.tile));
     }
     tiles = [...new Set(tiles)];
@@ -70,10 +72,10 @@ export function createUI(root, { onAction, onTileHighlight }) {
         : '<button class="ay-btn" data-a="pass">Pas</button>');
     }
     const kargo = mine && selected && CARDS[selected]?.kargo
-      ? `<div class="ay-row"><span class="ay-ask">Kargo ile uç:</span>${legal.filter(a => a.type === 'kargo' && a.card === selected)
+      ? `<div class="ay-row"><span class="ay-ask">Kargo ile uç:</span>${legal.filter(a => a.type === 'kargo' && kind(a.card) === kind(selected))
         .map(a => `<button class="ay-btn" data-a="kargo" data-city="${a.city}">✈ ${esc(cityName(a.city))}</button>`).join('')}</div>` : '';
-    const moveOk = new Set(legal.filter(a => a.type === 'move' || a.type === 'kargo').map(a => a.card));
-    const cards = p.hand.map(id => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && !moveOk.has(id) ? 'dim' : ''}`, `data-card="${id}"`)).join('');
+    const moveOk = new Set(legal.filter(a => a.type === 'move' || a.type === 'kargo').map(a => kind(a.card)));
+    const cards = p.hand.map(id => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && !moveOk.has(kind(id)) ? 'dim' : ''}`, `data-card="${id}"`)).join('');
     handEl.className = `ay-hand ay-panel ${mine ? '' : 'readonly'} ${handOpen ? '' : 'closed'}`;
     handEl.innerHTML = `<div class="ay-handle" data-a="fold"><span>${esc(p.name)}${mine ? '' : ' (bot, salt okunur)'} · ${p.hand.length} kart</span><span>${handOpen ? '▾' : '▴'}</span></div>
       <div class="ay-body"><div class="ay-row">${btn.join('')}</div>${kargo}${mine && tradeOpen ? tradeHtml() : ''}<div class="ay-cards">${cards}</div></div>`;
@@ -157,9 +159,9 @@ export function createUI(root, { onAction, onTileHighlight }) {
       const a = st.phase === 'close' ? legal.find(l => l.type === 'closeTile' && l.tile === idx)
         : st.phase === 'move' ? (st.tiles[idx]?.closed
           ? legal.find(l => l.type === 'openRoad' && l.tile === idx)
-          : selected && legal.find(l => l.type === 'move' && l.card === selected && l.tile === idx)) : null;
+          : selected && legal.find(l => l.type === 'move' && kind(l.card) === kind(selected) && l.tile === idx)) : null;
       if (!a) return false;
-      act(a); return true;
+      act(a.type === 'move' ? { ...a, card: selected } : a); return true;
     },
     showStart(onStart) {
       startEl?.remove();

@@ -104,7 +104,7 @@ export function createScene(canvas, { onTileTap } = {}) {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const y of [-0.3, 0.7]) corners.push(new THREE.Vector3(sx * half, y, sz * half));
   function fitCamera(w, h) {
     camera.aspect = w / h;
-    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), tx = ty * camera.aspect, k = 0.97;
+    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), tx = ty * camera.aspect, k = 0.9;
     camera.position.copy(dir).multiplyScalar(10); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
     let d = 0;
     for (const c of corners) {
