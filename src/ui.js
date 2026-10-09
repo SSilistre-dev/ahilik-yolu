@@ -236,7 +236,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     const il = ILKELER[st.tiles[sheet.tile]?.ilke];
     return `<div class="ay-sheet ay-p ay-compose"><div class="ay-sheethead"><b>🚧 ${esc(il?.name ?? '')} yolunu aç</b><button class="ay-btn sm" data-a="sheet-x">Kapat</button></div>
       <p class="ay-ask">Yolu açmak için <b>4 kart</b> gerekir. Kaç kartını koyacaksın? Eksik kalırsa arkadaşların tamamlayabilir. Her kart = 1 rozet.</p>
-      <div class="ay-opts">${vs.map(a => `<button class="ay-opt" data-a="road-go" data-i="${rs.indexOf(a)}"><b>${a.cards.length} kart</b><span class="ths">${thumbs(a.cards)}</span></button>`).join('')}</div></div>`;
+      <div class="ay-opts">${vs.map(a => `<button class="ay-opt" data-a="road-go" data-i="${legal.indexOf(a)}"><b>${a.cards.length} kart</b><span class="ths">${thumbs(a.cards)}</span></button>`).join('')}</div></div>`;
   }
   function renderSheet() {
     if (sheet && !(human() && st.phase === 'move' && has(sheet.kind === 'trade' ? 'offerTrade' : 'openRoad'))) sheet = null;
