@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>UI önizleme</title><link rel="stylesheet" href="../style.css">
+<style>html,body{margin:0;height:100%;background:#777}#dev{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:min(90vw,500px)}#dev button{min-height:44px}#ov{position:fixed;inset:0}</style></head>
+<body><div id="ov"></div><div id="dev"></div>
+<script type="module">
+import { createUI } from '../src/ui.js';
+const ui = createUI(document.getElementById('ov'), {
+  onAction: a => console.log('onAction', JSON.stringify(a)),
+  onTileHighlight: t => console.log('onTileHighlight', JSON.stringify(t)) });
+window.ui = ui;
+const load = async n => (await fetch(`../fixtures/${n}.json`)).json();
+const ev = [{ type: 'ahlak', text: 'Ahlak kartı: Cömert (olumlu). Cömert karelere +1 rozet.' }, { type: 'move', text: 'Bot 1 Disiplinli karesine ilerledi.' }, { type: 'trade', text: 'Sen Ankara ticaretini tamamladı (+2M).' }];
+const sc = [{ pIdx: 2, money: 6, badges: 11, mult: 3, total: 18, rank: 1 }, { pIdx: 0, money: 5, badges: 6, mult: 2, total: 10, rank: 2 }, { pIdx: 1, money: 0, badges: 3, mult: 1, total: 0, rank: 3 }, { pIdx: 3, money: 0, badges: 0, mult: 1, total: 0, rank: 4 }];
+const midLegal = [
+  { type: 'move', card: 'yol-comert-1', tile: 12 }, { type: 'move', card: 'yol-comert-1', tile: 5 },
+  { type: 'move', card: 'yol-adaletli-2', tile: 8 }, { type: 'move', card: 'yol-durust-2', tile: 8 },
+  { type: 'move', card: 'yol-ahievran-1', tile: 0 }, { type: 'kargo', card: 'yol-kargo-1', city: 'ankara' }, { type: 'kargo', card: 'yol-kargo-1', city: 'konya' },
+  { type: 'trade', withPlayer: 1, give: 'yol-comert-1', want: 'durust' }, { type: 'trade', withPlayer: 1, give: 'yol-comert-1', want: 'bilgili' },
+  { type: 'trade', withPlayer: 2, give: 'yol-adaletli-2', want: 'bilgili' }, { type: 'openRoad', tile: 8 },
+  { type: 'pass' }, { type: 'endTurn' }, { type: 'readText' }];
+const sets = {
+  start: async () => [await load('start'), [{ type: 'drawAhlak' }], []],
+  'mid (bot aktif)': async () => [await load('mid'), midLegal.filter(a => ['move', 'endTurn', 'readText'].includes(a.type)), ev],
+  'mid (sen aktif)': async () => { const s = await load('mid'); s.active = 0; s.players[0].pendingText = 'yol-comert-0'; s.players[0].hand.push('yol-kargo-1', 'yol-ahievran-1', 'yol-comert-0');
+    s.tiles[8].closed = true; return [s, midLegal, ev]; },
+  'sen (okuma yok)': async () => { const s = await load('mid'); s.active = 0; s.players[0].hand.push('yol-kargo-1', 'yol-comert-0'); s.tiles[8].closed = true; return [s, midLegal.filter(a => a.type !== 'readText'), ev]; },
+  'close fazi': async () => { const s = await load('mid'); s.active = 0; s.phase = 'close'; return [s, [{ type: 'closeTile', tile: 6 }, { type: 'closeTile', tile: 11 }], [{ type: 'ahlak', text: 'Olumsuz: Cimri! Bir Cömert kareyi kapat.' }]]; },
+  over: async () => { const s = await load('over'); s.__score = sc; return [s, [], ev]; },
+};
+const dev = document.getElementById('dev');
+for (const [k, f] of Object.entries(sets)) {
+  const b = document.createElement('button'); b.textContent = k;
+  b.onclick = async () => ui.render(...await f()); dev.append(b);
+}
+const sb = document.createElement('button'); sb.textContent = 'start screen';
+sb.onclick = () => ui.showStart(c => console.log('onStart', JSON.stringify(c)));
+dev.append(sb);
+const hide = document.createElement('button'); hide.textContent = 'menüyü gizle'; hide.onclick = () => dev.style.display = 'none'; dev.append(hide);
+dev.style.cssText += ';top:auto;bottom:auto;top:30%';
+sets['mid (sen aktif)']().then(a => ui.render(...a));
+</script></body></html>
