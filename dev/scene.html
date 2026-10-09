@@ -1,19 +1,22 @@
 <!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>scene dev</title>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <style>html,body{margin:0;height:100%;background:#222;font:14px sans-serif}
-#v{position:fixed;inset:0}#bar{position:fixed;top:0;left:0;right:0;z-index:2;display:flex;gap:6px;flex-wrap:wrap;padding:6px}</style>
+#v{position:fixed;inset:0}#bar{position:fixed;top:0;left:0;right:0;z-index:2;display:flex;gap:6px;flex-wrap:wrap;padding:6px}
+#info{position:fixed;left:6px;bottom:6px;z-index:2;color:#fff;background:#0008;padding:4px 8px;font:12px monospace;white-space:pre}
+#dot{position:fixed;z-index:3;width:10px;height:10px;margin:-5px;border-radius:50%;background:#0ff;display:none;pointer-events:none}</style>
 </head><body>
-<div id="bar"></div><div id="v"><canvas id="c"></canvas></div>
+<div id="bar"></div><div id="v"><canvas id="c"></canvas></div><div id="info"></div><div id="dot"></div>
 <script type="module">
 import { createScene } from '../src/scene.js';
 import { neighbors } from '../src/data.js';
-let state = null, hl = [];
-const sc = createScene(document.getElementById('c'), { onTileTap: (i) => console.log('tap', i) });
-window.sc = sc;
-const draw = () => state && sc.render(state, { highlight: hl });
-async function load(n) { state = await (await fetch(`../fixtures/${n}.json`)).json(); hl = []; draw(); }
+let state = null, hl = [], focus = null;
+const info = document.getElementById('info');
+const sc = createScene(document.getElementById('c'), { onTileTap: (i) => { console.log('tap', i); info.textContent = 'tap ' + i; }, onProgress: (p) => { info.textContent = 'load ' + Math.round(p * 100) + '%'; } });
+window.sc = sc; window.setFocus = (f) => { focus = f; draw(); };
+const draw = () => state && sc.render(state, { highlight: hl, focus });
+async function load(n) { state = await (await fetch(`../fixtures/${n}.json`)).json(); hl = []; focus = null; draw(); }
 function move() {
   if (!state) return;
   state = structuredClone(state);
@@ -21,11 +24,19 @@ function move() {
   const opts = neighbors(p.pos).filter((i) => !state.tiles[i].closed);
   const to = opts[Math.floor(Math.random() * opts.length)];
   from.occupants = from.occupants.filter((x) => x !== 0);
-  state.tiles[to].occupants.push(0); p.pos = to; hl = []; draw();
+  state.tiles[to].occupants.push(0); p.pos = to; hl = []; if (focus !== null) focus = to; draw();
 }
-function hlNb() { if (state) { hl = neighbors(state.players[0].pos); draw(); } }
-for (const [t, f] of [['start', () => load('start')], ['mid', () => load('mid')], ['over', () => load('over')], ['move p0', move], ['highlight nb', hlNb], ['clear hl', () => { hl = []; draw(); }]]) {
+function toggleClosed() {
+  state = structuredClone(state);
+  const t = state.tiles.find((x) => x.kind === 'ilke' && x.occupants.length === 0 && !x.closed) || state.tiles.find((x) => x.closed);
+  t.closed = !t.closed; draw();
+}
+function addBadge() { state = structuredClone(state); const t = state.tiles[7]; t.badges += 1; draw(); }
+const stats = () => { const i = sc.info(); info.textContent = `calls ${i.calls}  tris ${i.triangles}  geos ${i.geometries}  tex ${i.textures}`; };
+const hlNb = () => { if (state) { hl = neighbors(state.players[0].pos); draw(); } };
+for (const [t, f] of [['start', () => load('start')], ['mid', () => load('mid')], ['over', () => load('over')], ['move p0', move], ['highlight nb', hlNb], ['clear hl', () => { hl = []; draw(); }],
+  ['focus p0', () => { focus = state.players[0].pos; draw(); }], ['focus off', () => { focus = null; draw(); }], ['toggle closed', toggleClosed], ['+badge', addBadge], ['info', stats]]) {
   const b = document.createElement('button'); b.textContent = t; b.onclick = f; document.getElementById('bar').append(b);
 }
-load('mid');
+sc.ready.then(() => { load(new URLSearchParams(location.search).get('f') || 'mid').then(() => setTimeout(stats, 600)); });
 </script></body></html>
