@@ -84,7 +84,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#2b1d12;overscroll-beh
 .ay-card.wig{animation:wig 1.1s ease-in-out .5s 3}
 
 /* hand fan (phone) */
-.ay-fan{--step:.7;--cw:clamp(34px,calc((100vw - 56px) / (1 + (var(--n,6) - 1) * var(--step))),68px);display:flex;justify-content:center;align-items:flex-end;padding-top:22px;pointer-events:none;transition:transform .3s ease;max-width:100%}
+.ay-fan{--step:.7;--cw:clamp(34px,calc((100vw - 56px) / (1 + (var(--n,6) - 1) * var(--step))),60px);display:flex;justify-content:center;align-items:flex-end;padding-top:22px;pointer-events:none;transition:transform .3s ease;max-width:100%}
 .ay-dock.closed .ay-fan{transform:translateY(68%)}
 .ay-card{pointer-events:auto;flex:none;position:relative;width:var(--cw);padding:0;border:0;border-radius:calc(var(--cw) * .09);background:#222;overflow:visible;margin-left:calc(var(--cw) * (var(--step) - 1));transform-origin:50% 100%;transform:translateY(var(--y,0)) rotate(var(--r,0deg));z-index:calc(1 + var(--i,0));transition:transform .22s cubic-bezier(.3,1.4,.5,1),filter .2s;box-shadow:0 4px 10px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.6)}
 .ay-card:first-child{margin-left:0}
