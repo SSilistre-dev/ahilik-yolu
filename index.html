@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2b1d12">
+  <title>Ahilik Yolu – Ahlakın Yolu</title>
+  <link rel="stylesheet" href="style.css?v=1">
+  <!-- Bump v on every release: modules are mapped to versioned URLs so stale browser caches are bypassed. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "./src/main.js": "./src/main.js?v=1",
+      "./src/data.js": "./src/data.js?v=1",
+      "./src/game.js": "./src/game.js?v=1",
+      "./src/bot.js": "./src/bot.js?v=1",
+      "./src/scene.js": "./src/scene.js?v=1",
+      "./src/ui.js": "./src/ui.js?v=1"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="board"></canvas>
+  <div id="ui"></div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
