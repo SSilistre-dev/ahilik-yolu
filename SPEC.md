@@ -212,3 +212,30 @@ Animasyon önceki ve yeni state farkından türetilir.
   - `trade` → `trade` sesi
   - `over` → `win` sesi
   - Aktif insan oyuncunun piyonu `focus` olarak verilir.
+
+## v3: UX sözleşmesi (Fable 5.1 UX denetimi, 2026-10-09)
+
+Hedef: 7 yaşındaki bir çocuk "nereye gideceğim, şimdi ne yapacağım" sorusunu sormadan oynayabilmeli.
+
+- **`src/path.js`** (sahibi glue, saf modül, yalnız `./data.js` import eder):
+  `pathTo(state, pIdx) -> [tileIdx]`. Piyonun bulunduğu yerden görev şehrine komşu bir kareye giden en kısa yolu verir.
+  Yalnız açık ilke kareleri üzerinden ve 8 yönde arar; eldeki kartlara bakmaz. Başlangıç karesi dahil değildir.
+  Yol yoksa `[]` döner. `goalTile(state, pIdx)` görev şehrinin kare indeksini (yoksa null) döner.
+- **Scene** `render(state, { highlight, goal, path })`:
+  - `goal`: şehir karesi. Üstünde nabız atan bayrak ve halka çizilir.
+  - `path`: yol kareleri ince, sıcak renkli bir izle gösterilir; highlight'tan zayıf, ondan ayırt edilebilir.
+  - `focus` kaldırıldı (gelirse yok sayılır). Kamera her zaman bütün tahtayı gösterir.
+  - `setInsets({ top, bottom })` (CSS px): tahta HUD ile dock arasındaki görünür alana sığdırılır, değişince kamera yumuşakça uyum sağlar.
+- **UI** `createUI(root, { onAction, onTileHighlight, onLayout })`:
+  - `onLayout({ top, bottom })`: HUD alt kenarını ve dock üst kenarını, viewport'a göre CSS px olarak bildirir. Ölçü değiştikçe çağrılır (ResizeObserver).
+  - `tapTile`: önce kare. Seçili kart yokken parlayan kareye dokunulursa o kareye uyan kart oynanır. Önce ilke kartı, joker en son kullanılır.
+  - `legal` içinde `{type:'undo'}` varsa "Geri Al" butonu gösterilir. Bu aksiyonu glue ekler ve kendisi işler.
+  - `setHint(text|null)` yok; ipucunu UI, state ve legal'den kendisi türetir.
+  - "Turu Bitir" butonu, oynanacak hamle varken ikincil görünür; hamle kalmayınca birincil olur ve nabız atar.
+  - Aynı anda tek toast gösterilir. Hedef bandı ("Hedef: Kayseri · 2M" ve şehir görseli) üstte durur.
+- **Glue** (`main.js`, `index.html`, `path.js`, `manifest.webmanifest`, `sw.js`, `assets/icons/`):
+  - `pathTo` ve `goalTile` sonucunu yalnız insan oyuncu için scene'e verir.
+  - `onLayout` değerini `scene.setInsets` ile sahneye geçirir.
+  - Titreşim, undo yığını ve bot hızlandırma (bot sırasında dokununca sıradaki aksiyon hemen gelir) glue'dadır.
+  - PWA: manifest ve service worker. Başlangıç ekranı hemen gelir; yükleme çubuğu yalnız "Oyuna Başla"dan sonra, sahne hazır değilse görünür.
+  - Yatay modda "Telefonu dik tut" uyarısı gösterilir.
