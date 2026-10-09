@@ -44,3 +44,6 @@ function update(events) {
 }
 
 ui.showStart(start);
+
+// Debug handle for manual/CDP testing.
+window.__ahilik = { ui, scene, act, get state() { return state; } };
