@@ -1,13 +1,13 @@
 // Static game data shared by engine, scene and ui. Frozen contract: do not change shapes.
 
 export const ILKELER = {
-  comert:     { name: 'Cömert',     neg: 'Cimri',    color: '#e8742a', text: 'Cömert insan paylaşmanın bereketine inanır. Paylaşınca hiçbir şey azalmaz; paylaşan herkes zenginleşir.' },
-  merhametli: { name: 'Merhametli', neg: 'Acımasız', color: '#f5a623', text: 'İnsanlara sevgiyle yaklaş, kimseyi kırma. Merhamet, iyiliğin kapısını açar.' },
-  tokgozlu:   { name: 'Tokgözlü',   neg: 'Açgözlü',  color: '#138a8a', text: 'Her şeyi isteme, kanaatkâr ol, elindekine şükret. Kanaat eden bereket bulur.' },
-  disiplinli: { name: 'Disiplinli', neg: 'Düzensiz', color: '#7b3fa0', text: 'İşini zamanında yap, sorumluluk sahibi ol. Düzenli çalışan usta olur.' },
-  adaletli:   { name: 'Adaletli',   neg: 'Haksız',   color: '#d0302b', text: 'Kimseye haksızlık yapma, herkese eşit davran. İş hayatı hak ve adalet ekseninde şekillenir.' },
-  bilgili:    { name: 'Bilgili',    neg: 'Cahil',    color: '#5aa832', text: 'Öğrenmekten vazgeçme, bilgiyi aramaya devam et. Tecrübe aktarıldıkça çoğalır.' },
-  durust:     { name: 'Dürüst',     neg: 'Yalancı',  color: '#2f5fb3', text: 'Her zaman doğruyu söyle, güvenilir biri ol. İş, ahlakıyla yapılırsa meşrudur.' },
+  comert:     { name: 'Cömert',     neg: 'Cimri',    color: '#e8742a', text: 'Cömert insan paylaşmanın bereketine inanır. Paylaşınca hiçbir şey azalmaz. Sevgi, bilgi ve iyilik paylaştıkça çoğalır. Paylaşan herkes zenginleşir.' },
+  merhametli: { name: 'Merhametli', neg: 'Acımasız', color: '#f5a623', text: 'Merhametli insan kimseye zarar vermez. Kırıcı sözlerden, kötü davranışlardan uzak durur. Çünkü kalp kırmanın yanlış olduğunu bilir ve bunu yapmaz.' },
+  tokgozlu:   { name: 'Tokgözlü',   neg: 'Açgözlü',  color: '#138a8a', text: 'Tokgözlü insan, sahip olduklarıyla mutlu olur. Elindekiler için şükreder ve daha fazlasını istemez.' },
+  disiplinli: { name: 'Disiplinli', neg: 'Düzensiz', color: '#7b3fa0', text: 'Disiplinli insan kendine söz verir, tutar. Zor olsa da pes etmez. Düzenlidir, işini zamanında yapar. Canı istemese bile sorumluluğunu yerine getirir.' },
+  adaletli:   { name: 'Adaletli',   neg: 'Haksız',   color: '#d0302b', text: 'Adaletli insan herkese eşit davranır. En iyi arkadaşı bile haksızsa “Dur bakalım! Bu yaptığın doğru değil.” der. Tanımadığı biri bile haklıysa “Ben senin tarafındayım.” diyerek ona destek olur.' },
+  bilgili:    { name: 'Bilgili',    neg: 'Cahil',    color: '#5aa832', text: 'Bilgili insan öğrendiklerini kullanır. Sadece okumakla kalmaz, dener ve uygular. Merak eder, araştırır, yeni şeyler öğrenmekten mutlu olur.' },
+  durust:     { name: 'Dürüst',     neg: 'Yalancı',  color: '#2f5fb3', text: 'Dürüst insan, ne olursa olsun doğruyu söyler ve gerçeği savunur. Kendi zararına bile olsa yalan söylemez, gerçeği gizlemez.' },
 };
 export const ILKE_IDS = Object.keys(ILKELER);
 
