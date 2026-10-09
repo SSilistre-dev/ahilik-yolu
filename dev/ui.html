@@ -46,6 +46,7 @@ for (const [k, f] of Object.entries(sets)) {
 }
 const sb = document.createElement('button'); sb.textContent = 'start screen';
 sb.onclick = () => ui.showStart(c => console.log('onStart', JSON.stringify(c)));
+window.showStart = () => ui.showStart(c => { window.__start = c; console.log('onStart', JSON.stringify(c)); });
 dev.append(sb);
 const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.onclick = f; dev.append(b); };
 const cur = async () => { const s = await sets['sen (okuma yok)'](); ui.render(s[0], s[1], []); return s; };
@@ -58,5 +59,41 @@ mk('tile-first (kare 5)', async () => { const s = await sets['sen (okuma yok)'](
 mk('yardım (?)', () => ui.tutorial.openHelp());
 mk('rehberi oynat', async () => { await cur(); ui.tutorial.replay(); });
 mk('celebrate', async () => { const s = await cur(); ui.render(s[0], s[1], [{ type: 'trade', card: 'ticaret-kayseri-1', pIdx: 0, value: 2, text: 'Sen Kayseri ticaretini tamamladı (2M).' }]); });
+// ---- v4 mock'ları (SPEC v4: pending, offerTrade, respondTrade, openRoad{cards}, contribute) ----
+const COL = ['#d0302b', '#2f5fb3', '#5aa832', '#f5c518', '#7b3fa0', '#138a8a'];
+const base = async (n = 4, humans = [0]) => {
+  const s = await load('mid');
+  const names = ['Ayşe', 'Ali', 'Bot 2', 'Bot 3', 'Bot 4', 'Bot 5'];
+  const src = s.players;
+  s.players = Array.from({ length: n }, (_, i) => ({ ...src[i % 4], name: humans.includes(i) ? names[i] : (i === 1 ? 'Bot 1' : names[i]), color: COL[i], bot: !humans.includes(i), pos: src[i % 4].pos }));
+  s.players[0].hand = ['yol-comert-1', 'yol-adaletli-2', 'yol-durust-2', 'yol-durust-3', 'yol-ahievran-1', 'yol-kargo-1'];
+  s.players[1].hand = ['yol-adaletli-0', 'yol-disiplinli-3', 'yol-durust-4', 'yol-bilgili-3', 'yol-comert-2', 'yol-ahievran-0'];
+  s.players[0].badges = 13; s.players[1].badges = 7; if (n > 2) s.players[2].badges = 25; if (n > 3) s.players[3].badges = 4;
+  s.pending = null; s.declined = []; s.active = 0; s.tiles[17].closed = true; s.tiles[17].closedBy = 0; s.movesThisTurn = 0;
+  return s;
+};
+const mv = [{ type: 'move', card: 'yol-comert-1', tile: 12 }, { type: 'move', card: 'yol-adaletli-2', tile: 8 }, { type: 'kargo', card: 'yol-kargo-1', city: 'ankara' }];
+const offers = [];
+for (const w of [1, 2, 3]) for (const g of ['yol-comert-1', 'yol-adaletli-2', 'yol-durust-2']) for (const k of ['comert', 'adaletli', 'bilgili', 'durust', 'tokgozlu', 'ahievran']) if (!(g.includes(k))) offers.push({ type: 'offerTrade', withPlayer: w, give: g, want: k });
+const roadAct = [{ type: 'openRoad', tile: 17, cards: ['yol-durust-2'] }, { type: 'openRoad', tile: 17, cards: ['yol-ahievran-1'] }, { type: 'openRoad', tile: 17, cards: ['yol-durust-2', 'yol-ahievran-1'] }];
+Object.assign(sets, {
+  'v4 6 oyuncu': async () => [await base(6), [...mv, ...offers, { type: 'pass' }], [{ type: 'refill', pIdx: 0, n: 2, text: 'x' }]],
+  'v4 hamle yok': async () => [await base(4), [{ type: 'pass' }, ...offers.slice(0, 6)], []],
+  'v4 çok insan (perde)': async () => { const s = await base(4, [0, 1]); s.active = 1; return [s, [...mv, { type: 'pass' }], []]; },
+  'v4 takas sor': async () => [await base(4), [...mv, ...offers, ...roadAct, { type: 'endTurn' }], []],
+  'v4 takas cevap': async () => { const s = await base(4, [0, 1]); s.active = 1; s.players[1].bot = true; s.players[0].hand = ['yol-adaletli-2', 'yol-adaletli-4', 'yol-durust-2', 'yol-comert-1', 'yol-ahievran-1', 'yol-bilgili-3'];
+    s.pending = { kind: 'trade', from: 1, to: 0, give: 'yol-disiplinli-3', want: 'adaletli' };
+    return [s, [{ type: 'respondTrade', accept: true, card: 'yol-adaletli-2' }, { type: 'respondTrade', accept: true, card: 'yol-ahievran-1' }, { type: 'respondTrade', accept: false }], [{ type: 'tradeOffer', from: 1, to: 0, give: 'yol-disiplinli-3', want: 'adaletli', text: 'Bot 1 → Ayşe takas teklifi' }]]; },
+  'v4 yol katkı': async () => { const s = await base(4, [0, 1]); s.active = 1; s.players[1].bot = true; s.players[0].hand = ['yol-bilgili-2', 'yol-bilgili-4', 'yol-ahievran-1', 'yol-comert-1', 'yol-durust-2', 'yol-bilgili-3'];
+    s.pending = { kind: 'road', tile: 17, ilke: 'bilgili', offers: [{ pIdx: 1, cards: ['yol-bilgili-0', 'yol-bilgili-1'] }], ask: 0, need: 2 };
+    const c = cards => ({ type: 'contribute', cards });
+    return [s, [c([]), c(['yol-bilgili-2']), c(['yol-ahievran-1']), c(['yol-bilgili-2', 'yol-bilgili-4'])], [{ type: 'roadAsk', tile: 17, ask: 0, need: 2, text: 'Ayşe sorulacak' }]]; },
+  'v4 berabere': async () => { const s = await load('over'); s.players = (await base(4)).players; s.__score = [{ pIdx: 2, money: 6, badges: 11, mult: 3, total: 18, rank: 1 }, { pIdx: 0, money: 6, badges: 11, mult: 3, total: 18, rank: 1 }, { pIdx: 1, money: 0, badges: 3, mult: 1, total: 0, rank: 3 }, { pIdx: 3, money: 0, badges: 0, mult: 1, total: 0, rank: 4 }]; return [s, [], []]; },
+  'v4 toast reddedildi': async () => [await base(4), mv, [{ type: 'tradeDeclined', pIdx: 1, from: 0, want: 'adaletli', text: 'x' }]],
+});
+for (const k of Object.keys(sets).filter(k => k.startsWith('v4'))) {
+  const b = document.createElement('button'); b.textContent = k; b.onclick = async () => ui.render(...await sets[k]()); dev.append(b);
+}
+window.sets = sets;
 sets['mid (sen aktif)']().then(a => ui.render(a[0], a[1], []));
 </script></body></html>

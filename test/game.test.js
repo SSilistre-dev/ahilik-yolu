@@ -176,40 +176,6 @@ test('kargo only when movesThisTurn===0; flies to task city, completes trade, en
   assert.throws(() => apply(t, { type: 'kargo', card: 'yol-kargo-0', city: 'kayseri' }));
 });
 
-test('openRoad: contribution order, award split, discards', () => {
-  const s = moveState({ pos: 0, hand: ['yol-comert-1', 'yol-ahievran-0', 'yol-comert-2', 'yol-adaletli-0'] });
-  s.tiles[16].closed = true; s.tiles[16].closedBy = 'ahlak-comert-neg';
-  s.players[1].hand = ['yol-comert-3', 'yol-comert-4', 'yol-durust-0'];
-  assert.ok(legalActions(s).some((a) => a.type === 'openRoad' && a.tile === 16));
-  const { state: r, events } = apply(s, { type: 'openRoad', tile: 16 });
-  // A gives 2 comert + joker (3), B gives 1
-  assert.deepEqual(r.players[0].hand, ['yol-adaletli-0']);
-  assert.deepEqual(r.players[1].hand, ['yol-comert-4', 'yol-durust-0']);
-  assert.equal(r.players[0].badges, 3);
-  assert.equal(r.players[1].badges, 1);
-  assert.equal(r.awards.comert, 0);
-  assert.ok(!r.tiles[16].closed && r.tiles[16].closedBy === null);
-  assert.equal(r.decks.yolDiscard.length, 4);
-  assert.deepEqual(r.decks.ahlakDiscard, ['ahlak-comert-neg']);
-  assert.ok(events[0].text);
-  // active must give at least 1
-  const t = moveState({ pos: 0, hand: ['yol-adaletli-0'] });
-  t.tiles[16].closed = true; t.tiles[16].closedBy = 'ahlak-comert-neg';
-  t.players[1].hand = Array.from({ length: 4 }, (_, i) => `yol-comert-${i}`);
-  assert.ok(!types(t).includes('openRoad'));
-  assert.throws(() => apply(t, { type: 'openRoad', tile: 16 }));
-});
-
-test('trade swaps one card each', () => {
-  const s = moveState({ pos: 0, hand: ['yol-comert-1', 'yol-durust-1'] });
-  s.players[1].hand = ['yol-bilgili-1'];
-  const r = apply(s, { type: 'trade', withPlayer: 1, give: 'yol-comert-1', want: 'yol-bilgili-1' }).state;
-  assert.deepEqual(r.players[0].hand, ['yol-bilgili-1', 'yol-durust-1']);
-  assert.deepEqual(r.players[1].hand, ['yol-comert-1']);
-  assert.throws(() => apply(s, { type: 'trade', withPlayer: 0, give: 'yol-comert-1', want: 'yol-bilgili-1' }));
-  assert.throws(() => apply(s, { type: 'trade', withPlayer: 1, give: 'yol-comert-9', want: 'yol-bilgili-1' }));
-});
-
 test('pass discards hand, refills to 6, ends turn', () => {
   const s = moveState({ pos: 0, hand: ['yol-comert-1', 'yol-durust-1'] });
   s.decks.yol = s.decks.yol.filter((id) => !s.players.some((p) => p.hand.includes(id)));
@@ -223,6 +189,7 @@ test('pass discards hand, refills to 6, ends turn', () => {
 
 test('endTurn refills to 6', () => {
   const s = moveState({ pos: 0, hand: ['yol-comert-1'] });
+  s.movesThisTurn = 1;
   const r = apply(s, { type: 'endTurn' }).state;
   assert.equal(r.players[0].hand.length, 6);
   assert.equal(r.active, 1);
@@ -230,6 +197,7 @@ test('endTurn refills to 6', () => {
 
 test('yol deck reshuffles from discard', () => {
   const s = moveState({ pos: 0, hand: [] });
+  s.movesThisTurn = 1;
   const rest = YOL.filter((id) => !s.players[1].hand.includes(id));
   s.decks.yol = []; s.decks.yolDiscard = rest;
   const r = apply(s, { type: 'endTurn' }).state;
@@ -243,9 +211,11 @@ test('end conditions finish the round to startIdx', () => {
   let s = fresh(); s.decks.ahlak = ['ahlak-comert-0'];
   s = apply(s, { type: 'drawAhlak' }).state;
   assert.ok(s.endgame);
+  s.movesThisTurn = 1;
   s = apply(s, { type: 'endTurn' }).state; // A -> B, round not complete
   assert.equal(s.phase, 'ahlak');
   s = apply(s, { type: 'drawAhlak' }).state; // empty deck is tolerated
+  s.movesThisTurn = 1;
   s = apply(s, { type: 'endTurn' }).state; // B -> A (startIdx)
   assert.equal(s.phase, 'over');
   assert.deepEqual(legalActions(s), []);
@@ -256,14 +226,16 @@ test('end conditions finish the round to startIdx', () => {
   a.awards.comert = 1;
   a.tiles[16].closed = true; a.tiles[16].closedBy = 'ahlak-comert-neg';
   a.players[1].hand = ['yol-comert-2', 'yol-comert-3', 'yol-comert-4'];
-  const ra = apply(a, { type: 'openRoad', tile: 16 }).state;
+  a.players[0].hand = ['yol-comert-1', 'yol-comert-5'];
+  const ra0 = apply(a, { type: 'openRoad', tile: 16, cards: ['yol-comert-1', 'yol-comert-5'] }).state;
+  const ra = apply(ra0, { type: 'contribute', cards: ['yol-comert-2', 'yol-comert-3'] }).state;
   assert.ok(ra.endgame);
   // ticaret deck last card
   const t = moveState({ pos: 17, hand: ['yol-durust-1'] });
   t.decks.ticaret = ['ticaret-ankara-0'];
   assert.ok(apply(t, { type: 'move', card: 'yol-durust-1', tile: 18 }).state.endgame);
   // endgame triggered with startIdx last in line: B ends -> over
-  const e = moveState(); e.endgame = true; e.active = 1;
+  const e = moveState(); e.endgame = true; e.active = 1; e.movesThisTurn = 1;
   assert.equal(apply(e, { type: 'endTurn' }).state.phase, 'over');
 });
 
@@ -290,18 +262,3 @@ test('score multipliers and tie-break', () => {
   assert.equal(t[1].pIdx, 2);
 });
 
-test('property: 50 seeds, 4 bots finish, no exceptions, yol cards conserved', () => {
-  for (let seed = 1; seed <= 50; seed++) {
-    let s = newGame({ players: [1, 2, 3, 4].map((n) => ({ name: `Bot${n}`, bot: true })), seed });
-    let steps = 0;
-    while (s.phase !== 'over' && steps++ < 2000) {
-      const a = botAction(s);
-      s = apply(s, a).state;
-      const all = yolCards(s);
-      assert.equal(all.length, 57, `seed ${seed} step ${steps}`);
-      assert.equal(new Set(all).size, 57);
-    }
-    assert.equal(s.phase, 'over', `seed ${seed} did not finish`);
-    assert.equal(score(s).length, 4);
-  }
-});

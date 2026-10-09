@@ -1,4 +1,7 @@
-import { newGame, legalActions, apply, score } from './game.js';
+import * as G from './game.js';
+const { newGame, legalActions, apply, score } = G;
+// SPEC v4 actor(); eski motorda yok -> active.
+const actor = G.actor || (s => s.active);
 import { botAction } from './bot.js';
 import { createScene } from './scene.js';
 import { createUI } from './ui.js';
@@ -81,7 +84,7 @@ function act(action, isBot) {
   update(res.events);
 }
 
-const SOUND = { move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
+const SOUND = { swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
 const BUZZ = { move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
 
 function effects(events) {
@@ -107,14 +110,14 @@ function update(events) {
   clearTimeout(botTimer);
   botTimer = 0;
   const legal = legalActions(state);
-  const p = state.players[state.active];
-  if (undoStack.length && state.phase === 'move' && !p.bot) legal.push({ type: 'undo' });
+  const p = state.players[state.active], who = state.players[actor(state)];
+  if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
   if (state.phase === 'over') state.__score = score(state);
   highlight = [];
   ui.render(state, legal, events);
   renderScene();
   effects(events);
-  if (state.phase !== 'over' && p.bot) {
+  if (state.phase !== 'over' && who.bot) {
     const d = events.some(e => e.type === 'ahlak') ? BOT_DELAY_AHLAK : BOT_DELAY;
     botTimer = setTimeout(botNext, d);
   }
@@ -122,7 +125,7 @@ function update(events) {
 
 // Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
 addEventListener('pointerdown', () => {
-  if (!botTimer || !state || !state.players[state.active].bot) return;
+  if (!botTimer || !state || !state.players[actor(state)].bot) return;
   clearTimeout(botTimer);
   botTimer = setTimeout(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
 }, true);
