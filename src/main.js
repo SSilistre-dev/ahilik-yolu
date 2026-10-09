@@ -31,7 +31,8 @@ const scene = createScene(document.getElementById('board'), {
 const ui = createUI(document.getElementById('ui'), {
   onAction: a => act(a, false),
   onTileHighlight: idxs => { highlight = idxs; if (state) renderScene(); },
-  onLayout: ins => scene.setInsets?.(ins),
+  // #stage CSS already excludes the desktop sidebar, so the scene must not subtract it again.
+  onLayout: ins => scene.setInsets?.({ ...ins, right: 0 }),
 });
 const readyP = scene.ready ? Promise.resolve(scene.ready).catch(() => {}) : Promise.resolve();
 readyP.then(() => { sceneReady = true; });
