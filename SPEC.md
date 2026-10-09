@@ -161,3 +161,54 @@ Animasyon önceki ve yeni state farkından türetilir.
 `src/main.js` + `index.html`: entegrasyon katmanı. Bu dosyaları yalnız entegratör yazar.
 
 `fixtures/*.json`: elle hazırlanmış state'ler. Scene ve ui engine olmadan bunlarla geliştirilir.
+
+## v2: "gerçek oyun" sözleşmesi (2026-10-09)
+
+- **Sanat yönü:** Anadolu kervan dioraması.
+  - İlke kareleri taş adacıklardır. Üst yüzde basılı ilke karakteri (`assets/cards/ilke-<ilke>.jpg`) durur, yanında ilkeyi simgeleyen bir 3D obje bulunur.
+  - Şehirlerde simge yapılar var: Ankara Kalesi, Kırşehir türbesi, Konya kubbesi, Kayseri kümbeti.
+  - Piyonlar KayKit tüccar karakterleridir, idle ve walk animasyonları var.
+  - Rozetler KayKit gümüş/altın paralarıdır.
+- **Asset'ler:** yalnız CC0 (KayKit, Kenney, Quaternius) ve İGİAD basılı sanatı.
+  - Ham indirmeler `assets-src/` altında tutulur ve repoya girmez.
+  - Kullanılan dosyalar `assets/models/`, `assets/cards/` ve `assets/sfx/` altındadır.
+  - Lisanslar `assets/LICENSES.md` ve `assets/LICENSE-ART.md` dosyalarında.
+- **Mobil bütçe:**
+  - İlk yük ≤ 6 MB (modeller ≤ 3 MB, kart görselleri ≤ 2.5 MB).
+  - ≤ 120k üçgen, ≤ 60 draw call. Tekrarlayan objeler InstancedMesh veya merge ile çizilir.
+  - Gölge yalnız piyonlarda ve simge yapılarda, shadow map 1024. DPR en çok 1.5.
+  - Render talep üzerine yapılır; animasyon sürerken loop çalışır.
+- **Model yüklenemezse** manifestteki `fallback` primitifi çizilir. Oyun hiçbir zaman bloklanmaz.
+- **Kart UI HTML/CSS'tir:** kart yüzü basılı görseldir, el yelpaze düzenindedir, ahlak kartı flip animasyonuyla açılır.
+
+### API eklemeleri
+
+- `src/assets.js` (sahibi scene):
+  `export const MODELS = { key: { url, scale, rotation:[x,y,z], offset:[x,y,z], fallback:'box'|'cylinder'|'cone'|'sphere' } }`
+  ve `export const CARD_ART = (cardId) => url`.
+- `src/scene.js`:
+  ```
+  createScene(canvas, { onTileTap, onProgress(p) }) -> {
+    ready: Promise,
+    render(state, { highlight:[idx], focus: idx|null }),
+    projectTile(idx) -> { x, y },   // CSS px, viewport koordinatı
+    dispose()
+  }
+  ```
+  `focus` verilirse kamera o kareye yumuşak pan ve zoom yapar; null ise tüm tahta görünür.
+- `src/ui.js`: mevcut API korunur. Eklenen metodlar:
+  - `setLoading(p)`: 0..1 arası ilerleme, 1 olunca yükleme ekranı gizlenir.
+  - `flyCoins({ x, y }, pIdx, n)`: ekran noktasından oyuncu çipine para uçurur.
+  - Ahlak reveal'ı ui kendisi oynatır; `events` içinde `type:'ahlak'` görünce başlar.
+- `src/sfx.js` (sahibi glue): `createSfx() -> { unlock(), play(name) }`.
+  `name` değerleri: `click`, `card`, `coin`, `step`, `close`, `open`, `trade`, `win`.
+  İlk kullanıcı dokunuşunda `unlock()` çağrılır (iOS).
+- `src/main.js` (glue), event → efekt eşlemesi:
+  - `badges` → `flyCoins(projectTile(tile), pIdx, n)` + `coin` sesi
+  - `move` → `step` sesi
+  - `ahlak` → `card` sesi
+  - `close` → `close` sesi
+  - `openRoad` → `open` sesi
+  - `trade` → `trade` sesi
+  - `over` → `win` sesi
+  - Aktif insan oyuncunun piyonu `focus` olarak verilir.
