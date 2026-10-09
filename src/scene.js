@@ -1,17 +1,29 @@
+// 3D world: "Anatolian caravan diorama". Owner: scene agent. Contract: SPEC.md "v2".
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ILKELER, CITIES, BOARD } from './data.js';
+import { MODELS, CARD_ART } from './assets.js';
 
-const P = 1.1;            // tile pitch
-const ILKE_H = 0.18, CITY_H = 0.1, COIN_H = 0.035, MAX_COINS = 6;
+const P = 1.1;                     // tile pitch
+const HALF = 3.25;                 // terrain plate half size
+const BASE_H = 0.1, CITY_H = 0.14; // tile top heights
+const ART = 0.7, ART_OFF = 0.07;   // printed art plate size and shift toward the camera
+const IDLE_MS = 66;                // idle animation redraw interval (~15 fps)
 const tileX = (c) => (c - 2) * P, tileZ = (r) => (r - 2) * P;
+const topOf = (t) => (t.kind === 'city' ? CITY_H : BASE_H);
+const IDENT = new THREE.Matrix4();
+const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+const lam = (color, extra) => new THREE.MeshLambertMaterial({ color, ...extra });
+const mulberry = (a) => () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 
-function canvasTex(size, draw) {
-  const cv = document.createElement('canvas');
-  cv.width = cv.height = size;
-  draw(cv.getContext('2d'), size);
+// ---------- procedural textures ----------
+function canvasTex(w, h, draw, repeat) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  draw(cv.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(cv);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); }
   return t;
 }
 function fitText(g, text, y, maxW, px, color) {
@@ -20,208 +32,514 @@ function fitText(g, text, y, maxW, px, color) {
   g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(text, g.canvas.width / 2, y);
 }
-const ilkeTex = (ilke) => canvasTex(256, (g, s) => {
+const fallbackArt = (ilke) => canvasTex(256, 256, (g, s) => {
   g.fillStyle = ILKELER[ilke].color; g.fillRect(0, 0, s, s);
-  g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 6; g.strokeRect(8, 8, s - 16, s - 16);
-  g.fillStyle = '#fff'; g.beginPath(); g.arc(s / 2, 92, 46, 0, 7); g.fill();
-  g.fillStyle = ILKELER[ilke].color; g.beginPath(); g.arc(s / 2, 92, 30, 0, 7); g.fill();
-  g.fillStyle = '#fff'; g.beginPath(); g.arc(s / 2, 92, 14, 0, 7); g.fill();
-  fitText(g, ILKELER[ilke].name, 196, s - 36, 44, '#fff');
+  g.fillStyle = 'rgba(255,255,255,.18)'; g.beginPath(); g.arc(s / 2, 96, 74, 0, 7); g.fill();
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(s / 2, 96, 40, 0, 7); g.fill();
+  g.fillStyle = ILKELER[ilke].color; g.beginPath(); g.arc(s / 2, 96, 26, 0, 7); g.fill();
+  fitText(g, ILKELER[ilke].name, 204, s - 30, 46, '#fff');
 });
-const cityTex = (city) => canvasTex(256, (g, s) => {
-  g.fillStyle = '#e9dcbc'; g.fillRect(0, 0, s, s);
-  g.strokeStyle = '#a58a55'; g.lineWidth = 6; g.strokeRect(8, 8, s - 16, s - 16);
-  fitText(g, CITIES[city].name, 214, s - 36, 42, '#4a3a1c');
+const sandTex = () => canvasTex(1024, 1024, (g, s) => {
+  const r = mulberry(7);
+  g.fillStyle = '#dcc088'; g.fillRect(0, 0, s, s);
+  const grd = g.createRadialGradient(s / 2, s / 2, s * 0.15, s / 2, s / 2, s * 0.75);
+  grd.addColorStop(0, 'rgba(255,238,190,.35)'); grd.addColorStop(1, 'rgba(150,105,55,.4)');
+  g.fillStyle = grd; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 9000; i++) {
+    g.fillStyle = r() < 0.5 ? 'rgba(120,85,45,.16)' : 'rgba(255,240,200,.2)';
+    const w = 1 + r() * 4; g.fillRect(r() * s, r() * s, w, w);
+  }
+  g.strokeStyle = 'rgba(130,95,55,.14)'; g.lineWidth = 3;
+  for (let i = 0; i < 26; i++) { g.beginPath(); const y = r() * s, x = r() * s * 0.6; g.moveTo(x, y); g.bezierCurveTo(x + 80, y - 20, x + 160, y + 20, x + 100 + r() * 200, y); g.stroke(); }
 });
-const barrierTex = () => canvasTex(128, (g, s) => {
-  g.fillStyle = '#111'; g.fillRect(0, 0, s, s); g.fillStyle = '#f2c200';
-  for (let i = -s; i < 2 * s; i += 32) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 16, 0); g.lineTo(i + 16 + s, s); g.lineTo(i + s, s); g.fill(); }
+const woodTex = () => canvasTex(512, 512, (g, s) => {
+  const r = mulberry(3), n = 8, h = s / n;
+  for (let i = 0; i < n; i++) {
+    const l = 20 + r() * 6; g.fillStyle = `hsl(25 ${34 + r() * 8}% ${l}%)`; g.fillRect(0, i * h, s, h);
+    g.strokeStyle = `rgba(15,8,2,${0.12 + r() * 0.1})`; g.lineWidth = 1;
+    for (let k = 0; k < 14; k++) { const y = i * h + r() * h; g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(s * 0.3, y + r() * 5 - 2, s * 0.6, y + r() * 5 - 2, s, y); g.stroke(); }
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(0, i * h, s, 2);
+  }
+}, 9);
+const glowTex = () => canvasTex(128, 128, (g, s) => {
+  g.shadowColor = '#ffe27a'; g.shadowBlur = 16; g.strokeStyle = '#fff2b0'; g.lineWidth = 9;
+  g.beginPath(); g.roundRect(18, 18, s - 36, s - 36, 18); g.stroke(); g.stroke();
 });
-const frameTex = () => canvasTex(128, (g, s) => {
-  g.shadowColor = '#fff176'; g.shadowBlur = 14; g.strokeStyle = '#fff6a0'; g.lineWidth = 10;
-  g.strokeRect(14, 14, s - 28, s - 28);
-});
-const lam = (color, extra) => new THREE.MeshLambertMaterial({ color, ...extra });
-// BoxGeometry material order: +x -x +y -y +z -z; top is +y
-const boxMats = (side, top) => [side, side, top, side, side, side];
+function labelSprite(text) {
+  const t = canvasTex(256, 80, (g, w, h) => {
+    g.fillStyle = 'rgba(34,22,12,.78)'; g.strokeStyle = '#e8c97a'; g.lineWidth = 3;
+    g.beginPath(); g.roundRect(4, 4, w - 8, h - 8, 22); g.fill(); g.stroke();
+    fitText(g, text, h / 2 + 2, w - 40, 40, '#fff3d6');
+  });
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(0.72, 0.225, 1); s.renderOrder = 10; return s;
+}
 
-export function createScene(canvas, { onTileTap } = {}) {
+// ---------- geometry helpers ----------
+function rrect(w, h, r) {
+  const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
+  s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+  s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y); return s;
+}
+// keep position/normal/uv(/color); non-indexed so everything merges
+function norm(g, color) {
+  if (g.index) g = g.toNonIndexed();
+  for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k) && !(color && k === 'color')) g.deleteAttribute(k);
+  const n = g.attributes.position.count;
+  if (!g.attributes.normal) g.computeVertexNormals();
+  if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+  if (color && !g.attributes.color) g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
+  return g;
+}
+function paint(g, color) {
+  const n = g.attributes.position.count, a = new Float32Array(n * 3), c = new THREE.Color(color);
+  for (let i = 0; i < n; i++) { a[i * 3] = c.r; a[i * 3 + 1] = c.g; a[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+}
+// rounded slab, top at y=h, bottom at y=0, centred on xz. Sides = stone, lid = lidColor (vertex colours).
+function slab(w, r, h, bev, lidColor, sideColor, lidUV) {
+  const g = new THREE.ExtrudeGeometry(rrect(w - 2 * bev, w - 2 * bev, Math.max(0.01, r - bev)), { depth: h - 2 * bev, bevelEnabled: true, bevelThickness: bev, bevelSize: bev, bevelSegments: 2, curveSegments: 4 });
+  const pos = g.attributes.position, uv = g.attributes.uv, col = new Float32Array(pos.count * 3), lc = new THREE.Color(lidColor), sc = new THREE.Color(sideColor);
+  const topZ = h - 2 * bev + bev - 1e-4, W = w - 2 * bev;
+  for (let i = 0; i < pos.count; i++) {
+    const lid = pos.getZ(i) >= topZ && g.attributes.normal.getZ(i) > 0.99, c = lid ? lc : sc;
+    col.set([c.r, c.g, c.b], i * 3);
+    if (lidUV) uv.setXY(i, lid ? pos.getX(i) / W + 0.5 : 0.5, lid ? pos.getY(i) / W + 0.5 : 0.5);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.rotateX(-Math.PI / 2); g.translate(0, bev, 0);
+  return g;
+}
+
+// ---------- scene ----------
+export function createScene(canvas, { onTileTap, onProgress } = {}) {
+  THREE.Cache.enabled = true;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  canvas.style.touchAction = 'none';
-  canvas.style.width = canvas.style.height = '100%';
-  canvas.style.display = 'block';
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  canvas.style.touchAction = 'none'; canvas.style.width = canvas.style.height = '100%'; canvas.style.display = 'block';
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x2b2118);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6a48, 1.0));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(-3, 7, 5); scene.add(sun);
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+  scene.background = new THREE.Color(0x2a1d15);
+  scene.fog = new THREE.Fog(0x2a1d15, 17, 40);
+  scene.add(new THREE.HemisphereLight(0xfff0d8, 0x8c6a45, 1.35));
+  const sun = new THREE.DirectionalLight(0xffe0b0, 2.1); sun.position.set(-4, 7.5, 5); sun.target.position.set(0, 0, 0);
+  sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 1, far: 20 });
+  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
+  scene.add(sun, sun.target);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
 
-  // base plate
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(5 * P + 0.5, 0.3, 5 * P + 0.5), lam(0x8b5a2b));
-  plate.position.y = -0.15; scene.add(plate);
+  // ----- loading -----
+  const manager = new THREE.LoadingManager();
+  manager.onProgress = (_u, done, total) => onProgress && onProgress(Math.min(0.99, done / Math.max(1, total)));
+  const gltfLoader = new GLTFLoader(manager), texLoader = new THREE.TextureLoader(manager);
+  const loaded = {}; // key -> gltf | null
+  const jobs = Object.entries(MODELS).map(([key, cfg]) => new Promise((res) => {
+    gltfLoader.load(cfg.url, (g) => { loaded[key] = g; res(); }, undefined, (e) => { console.warn('model failed', key, e && e.message); loaded[key] = null; res(); });
+  }));
 
-  // shared resources
-  const tileGeo = new THREE.BoxGeometry(1, 1, 1);
-  const ilkeMats = {}, cityMats = {};
-  for (const id in ILKELER) ilkeMats[id] = boxMats(lam(ILKELER[id].color), lam(0xffffff, { map: ilkeTex(id) }));
-  for (const id in CITIES) cityMats[id] = boxMats(lam(0xe0d0a8), lam(0xffffff, { map: cityTex(id) }));
-  const pawnCone = new THREE.ConeGeometry(0.17, 0.42, 16), pawnBall = new THREE.SphereGeometry(0.11, 16, 12);
-  const coinGeo = new THREE.CylinderGeometry(0.13, 0.13, COIN_H, 16), coinMat = lam(0xc9ced4, { emissive: 0x30343a });
-  const barGeo = new THREE.BoxGeometry(0.94, 0.22, 0.94), barMat = lam(0xffffff, { map: barrierTex() });
-  const frameGeo = new THREE.PlaneGeometry(1.08, 1.08).rotateX(-Math.PI / 2);
-  const frameMat = new THREE.MeshBasicMaterial({ map: frameTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-  const lmMat = lam(0xb89a63), lmMat2 = lam(0x7d6a44);
+  // ----- shared materials -----
+  const procMat = lam(0xffffff, { vertexColors: true });
+  const kitMats = new Map();
+  function kitMat(kit, orig, vc) {
+    const k = `${kit}|${orig.name}|${vc}`;
+    // Kenney nature kit ships teal factors; repaint to a warm Anatolian palette
+    const KN = { leafsGreen: 0x6f9a3c, grass: 0x9aa84a, woodBark: 0x7a5535, dirt: 0xb08a5a };
+    if (!kitMats.has(k)) kitMats.set(k, lam(kit === 'kn' && KN[orig.name] ? KN[orig.name] : orig.color || 0xffffff, { map: orig.map || null, vertexColors: vc }));
+    return kitMats.get(k);
+  }
+  // baked, manifest-transformed geometry parts [{geo, mat}] per model key (fallback primitive if missing)
+  const partsCache = {};
+  function parts(key) {
+    if (partsCache[key]) return partsCache[key];
+    const cfg = MODELS[key], g = loaded[key], out = [];
+    const s = [].concat(cfg.scale), sc = s.length === 3 ? s : [s[0], s[0], s[0]];
+    const T = new THREE.Matrix4().compose(V3(...cfg.offset), new THREE.Quaternion().setFromEuler(new THREE.Euler(...cfg.rotation)), V3(...sc));
+    if (g) {
+      g.scene.updateMatrixWorld(true);
+      g.scene.traverse((o) => {
+        if (!o.isMesh || o.isSkinnedMesh) return;
+        const vc = !!o.geometry.attributes.color;
+        out.push({ geo: norm(o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(T, o.matrixWorld)), vc), mat: kitMat(cfg.kit, [].concat(o.material)[0], vc) });
+      });
+    }
+    if (!out.length) {
+      const [w, h, d] = cfg.size || [0.2, 0.2, 0.2];
+      const geo = { box: () => new THREE.BoxGeometry(w, h, d), cylinder: () => new THREE.CylinderGeometry(w / 2, w / 2, h, 12), cone: () => new THREE.ConeGeometry(w / 2, h, 12), sphere: () => new THREE.SphereGeometry(w / 2, 12, 8).scale(1, h / w, d / w) }[cfg.fallback || 'box']();
+      geo.translate(0, h / 2, 0);
+      out.push({ geo: paint(norm(geo, true), cfg.color || 0xb89a63), mat: procMat });
+    }
+    return (partsCache[key] = out);
+  }
+  const compose = (x, y, z, s = 1, ry = 0, rx = 0) => new THREE.Matrix4().compose(V3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, 0)), V3(...[].concat(s, s, s).slice(0, 3)));
+  function Batch() {
+    const by = new Map();
+    return {
+      add(ps, m = IDENT) { for (const { geo, mat } of ps) { if (!by.has(mat)) by.set(mat, []); by.get(mat).push(geo.clone().applyMatrix4(m)); } },
+      put(key, x, y, z, s = 1, ry = 0, rx = 0) { this.add(parts(key), compose(x, y, z, s, ry, rx)); },
+      build(cast, recv) {
+        for (const [mat, gs] of by) { const m = new THREE.Mesh(mergeGeometries(gs), mat); m.castShadow = cast; m.receiveShadow = recv; scene.add(m); }
+        by.clear();
+      },
+    };
+  }
+  // procedural primitives in vertex colours
+  const G = {
+    box: (w, h, d) => new THREE.BoxGeometry(w, h, d), cyl: (rt, rb, h, n = 14) => new THREE.CylinderGeometry(rt, rb, h, n),
+    sph: (r) => new THREE.SphereGeometry(r, 14, 10), dome: (r) => new THREE.SphereGeometry(r, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), cone: (r, h) => new THREE.ConeGeometry(r, h, 14),
+  };
+  function piece(geo, color, x, y, z, o = {}) {
+    const m = new THREE.Matrix4().compose(V3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(o.rx || 0, o.ry || 0, o.rz || 0)), V3(...(o.s || [1, 1, 1])));
+    return { geo: paint(norm(geo.clone().applyMatrix4(m), true), color), mat: procMat };
+  }
 
-  // tiles
-  const tileMeshes = [], tops = [], coinGroups = [], coinCount = [], barriers = [], frames = [];
+  // ----- static world: table, terrain, tiles -----
+  const statics = Batch(), lands = Batch();
+  const table = new THREE.Mesh(new THREE.PlaneGeometry(70, 70).rotateX(-Math.PI / 2), lam(0xffffff, { map: woodTex() }));
+  table.position.y = -0.16; table.receiveShadow = true; scene.add(table);
+  const sandT = sandTex();
+  const plate = new THREE.Mesh(slab(HALF * 2, 0.8, 0.16, 0.07, 0xffffff, 0xa07c4c, true).translate(0, -0.16, 0), lam(0xffffff, { map: sandT, vertexColors: true }));
+  plate.receiveShadow = true; scene.add(plate);
+
+  const stone = 0xcbb78f, artMats = {}, artTex = {};
+  for (const id in ILKELER) {
+    artTex[id] = fallbackArt(id);
+    artMats[id] = lam(0xffffff, { map: artTex[id], emissive: 0xffffff, emissiveMap: artTex[id], emissiveIntensity: 0.3 });
+  }
+  const artGeos = {};
   for (const t of BOARD) {
-    const h = t.kind === 'city' ? CITY_H : ILKE_H;
-    const m = new THREE.Mesh(tileGeo, t.kind === 'city' ? cityMats[t.city] : ilkeMats[t.ilke]);
-    m.scale.set(1, h, 1);
-    m.position.set(tileX(t.c), h / 2, tileZ(t.r));
-    m.userData.idx = t.idx;
-    scene.add(m); tileMeshes.push(m); tops.push(h);
-    if (t.kind === 'city') addLandmark(t.city, m.position.x, h, m.position.z);
-    const f = new THREE.Mesh(frameGeo, frameMat);
-    f.position.set(m.position.x, h + 0.02, m.position.z); f.visible = false; scene.add(f); frames.push(f);
-    coinCount.push(0);
+    const x = tileX(t.c), z = tileZ(t.r), top = topOf(t);
+    statics.add([{ geo: norm(slab(1.0, 0.14, top, 0.03, t.kind === 'city' ? 0xe6d6aa : ILKELER[t.ilke].color, stone), true), mat: procMat }], compose(x, 0, z));
+    if (t.kind === 'ilke') {
+      const a = new THREE.ShapeGeometry(rrect(ART, ART, 0.06), 4), pos = a.attributes.position, uv = a.attributes.uv;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / ART + 0.5, pos.getY(i) / ART + 0.5);
+      a.rotateX(-Math.PI / 2); a.translate(x + ART_OFF * 0.6, top + 0.004, z + ART_OFF);
+      (artGeos[t.ilke] = artGeos[t.ilke] || []).push(a);
+    }
   }
-  function addLandmark(city, x, y, z) {
-    const g = new THREE.Group(); g.position.set(x - 0.27, y, z - 0.2);
-    const add = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); };
-    if (city === 'ankara') { add(new THREE.BoxGeometry(0.4, 0.08, 0.28), lmMat, 0, 0.04, 0); add(new THREE.BoxGeometry(0.3, 0.14, 0.2), lmMat2, 0, 0.15, 0); add(new THREE.BoxGeometry(0.2, 0.06, 0.12), lmMat, 0, 0.25, 0); }
-    else if (city === 'konya') { add(new THREE.CylinderGeometry(0.1, 0.12, 0.2, 12), lmMat, 0, 0.1, 0); add(new THREE.ConeGeometry(0.1, 0.2, 12), lam(0x2a9d8f), 0, 0.3, 0); }
-    else if (city === 'kayseri') { add(new THREE.BoxGeometry(0.28, 0.16, 0.28), lmMat, 0, 0.08, 0); add(new THREE.CylinderGeometry(0.1, 0.1, 0.16, 12), lmMat2, 0, 0.24, 0); add(new THREE.ConeGeometry(0.11, 0.14, 12), lam(0x8a3b2a), 0, 0.39, 0); }
-    else { add(new THREE.CylinderGeometry(0.14, 0.16, 0.1, 12), lmMat, 0, 0.05, 0); add(new THREE.BoxGeometry(0.16, 0.2, 0.16), lmMat2, 0, 0.2, 0); add(new THREE.BoxGeometry(0.2, 0.04, 0.2), lmMat, 0, 0.32, 0); }
-    scene.add(g);
+  for (const id in artGeos) { const m = new THREE.Mesh(mergeGeometries(artGeos[id]), artMats[id]); m.receiveShadow = true; scene.add(m); }
+  // swap in printed art when it loads; fallback canvas stays if the file is missing
+  for (const id in ILKELER) {
+    jobs.push(new Promise((res) => texLoader.load(CARD_ART('ilke-' + id), (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+      artTex[id].dispose(); artTex[id] = tex; artMats[id].map = artMats[id].emissiveMap = tex; artMats[id].needsUpdate = true; res(); kick();
+    }, undefined, () => res())));
   }
 
-  // camera fit: closed-form distance so the plate's bounding box fits at any aspect
-  const dir = new THREE.Vector3(0, Math.sin(1.0), Math.cos(1.0));
-  const half = (5 * P + 0.5) / 2, corners = [];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) for (const y of [-0.3, 0.7]) corners.push(new THREE.Vector3(sx * half, y, sz * half));
+  // highlight rings (one instanced mesh)
+  const glow = new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+  const rings = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.14, 1.14).rotateX(-Math.PI / 2), glow, 25);
+  rings.frustumCulled = false; rings.renderOrder = 5; scene.add(rings);
+
+  // ----- model-dependent world, built once loading settles -----
+  let coinS, coinG, fenceM, crateM, built = false;
+  const cityLabels = [], pawns = [];
+  const ILKE_PROP_SPOT = { x: -0.32, z: -0.32 };
+  function buildWorld() {
+    const rnd = mulberry(11);
+    // ilke props at the back-left corner of every ilke tile
+    for (const t of BOARD) {
+      if (t.kind !== 'ilke') continue;
+      const x = tileX(t.c) + ILKE_PROP_SPOT.x, z = tileZ(t.r) + ILKE_PROP_SPOT.z, y = BASE_H, ry = (t.idx % 3 - 1) * 0.45;
+      const loc = (px, pz) => [x + px, y, z + pz];
+      switch (t.ilke) {
+        case 'comert': statics.put('chest', ...loc(0, 0), 1, ry); statics.put('coinGold', ...loc(0.19, 0.08), 0.8); statics.put('coinGold', x + 0.19, y + 0.032, z + 0.08, 0.8, 0.5); break;
+        case 'bilgili': statics.put('journal', ...loc(0.02, 0.02), 1, ry); break;
+        case 'disiplinli': statics.put('hourglass', ...loc(0, 0), 1, ry); break;
+        case 'durust': statics.put('lantern', ...loc(0, 0), 1, ry); break;
+        case 'merhametli': statics.put('well', ...loc(0, 0), 1, ry); break;
+        case 'adaletli': { // procedural scales
+          const ps = [piece(G.cyl(0.075, 0.085, 0.03), 0x7a5a3a, 0, 0.015, 0), piece(G.cyl(0.014, 0.018, 0.27), 0xe0b23c, 0, 0.165, 0),
+            piece(G.box(0.3, 0.024, 0.024), 0xe0b23c, 0, 0.29, 0), piece(G.sph(0.02), 0xe0b23c, 0, 0.31, 0)];
+          for (const s of [-1, 1]) ps.push(piece(G.cyl(0.07, 0.055, 0.016), 0xd9d2c0, s * 0.14, 0.15, 0), piece(G.cyl(0.003, 0.003, 0.13), 0x8a7a50, s * 0.14, 0.22, 0));
+          statics.add(ps, compose(x, y, z, 1, ry)); break;
+        }
+        case 'tokgozlu': { // plate with bread + sack
+          const ps = [piece(G.cyl(0.1, 0.085, 0.018), 0xe8dcc0, 0, 0.009, 0), piece(G.sph(0.07), 0xc98a3c, -0.025, 0.04, 0.0, { s: [1.1, 0.6, 0.8], ry: 0.4 }), piece(G.sph(0.05), 0xb8782e, 0.04, 0.036, 0.03, { s: [1, 0.6, 0.8], ry: -0.5 })];
+          statics.add(ps, compose(x, y, z, 1, ry)); statics.put('sack', x + 0.2, y, z + 0.1, 1, 0.5); break;
+        }
+      }
+    }
+    // cities
+    for (const t of BOARD.filter((b) => b.kind === 'city')) {
+      const x = tileX(t.c), z = tileZ(t.r), y = CITY_H, c = t.city;
+      if (c === 'ankara') {
+        // castle on a rocky mound: tall keep behind, gate towers + gate wall in front
+        lands.add([piece(G.cyl(0.42, 0.5, 0.1, 8), 0x8d7a5c, 0, 0.05, 0, { ry: 0.2 }), piece(G.cyl(0.33, 0.4, 0.1, 7), 0xa08c6a, 0, 0.15, 0, { ry: 0.5 })], compose(x, y - 0.02, z));
+        const tw = (px, pz, n, s) => { let h = 0.23; lands.put('towerBase', x + px, y + h, z + pz, s); h += s; if (n > 1) { lands.put('towerMid', x + px, y + h, z + pz, s); h += s; } lands.put('towerRoof', x + px, y + h, z + pz, s); };
+        tw(0, -0.14, 2, 0.36); tw(-0.3, 0.2, 1, 0.27); tw(0.3, 0.2, 1, 0.27);
+        lands.put('wall', x, y + 0.23, z + 0.2, [0.4, 0.22, 0.26], 0); lands.put('gate', x, y + 0.23, z + 0.2, [0.7, 0.45, 0.45], Math.PI / 2);
+        lands.put('wall', x - 0.15, y + 0.23, z + 0.03, [0.4, 0.22, 0.26], 0.9); lands.put('wall', x + 0.15, y + 0.23, z + 0.03, [0.4, 0.22, 0.26], -0.9);
+      } else if (c === 'kirsehir') { // turbe: hexagonal tower + blue cone roof, tent beside it
+        lands.put('hexBase', x - 0.05, y, z - 0.08, 0.58); lands.put('hexRoof', x - 0.05, y + 1.31 * 0.58, z - 0.08, 0.58);
+        statics.put('tent', x + 0.3, y, z + 0.3, 0.8, -0.5); statics.put('palmShort', x - 0.36, y, z + 0.3, 0.8);
+      } else if (c === 'konya') { // dome (turquoise) + minaret + small house
+        const ps = [piece(G.cyl(0.26, 0.28, 0.06), 0xe6d6aa, 0, 0.03, 0), piece(G.cyl(0.21, 0.21, 0.24), 0xf1e6c8, 0, 0.18, 0), piece(G.dome(0.24), 0x23a6a0, 0, 0.3, 0),
+          piece(G.cyl(0.012, 0.012, 0.12), 0xe0b23c, 0, 0.6, 0), piece(G.sph(0.025), 0xe0b23c, 0, 0.67, 0),
+          piece(G.cyl(0.04, 0.055, 0.75), 0xf1e6c8, -0.34, 0.375, 0.14), piece(G.cyl(0.075, 0.075, 0.03), 0xd9c9a0, -0.34, 0.58, 0.14), piece(G.cone(0.06, 0.22), 0x23a6a0, -0.34, 0.86, 0.14)];
+        lands.add(ps, compose(x + 0.08, y, z - 0.06));
+        statics.put('house', x + 0.3, y, z + 0.32, 0.7, 0.3);
+      } else { // kumbet: tall hexagonal tower with cone roof, two market stalls in front
+        lands.put('hexBase', x, y, z - 0.14, 0.5); lands.put('hexRoof', x, y + 1.31 * 0.5, z - 0.14, 0.5);
+        statics.put('stallRed', x - 0.28, y, z + 0.3, 0.8, 0.2); statics.put('stallGreen', x + 0.28, y, z + 0.3, 0.8, -0.2);
+      }
+    }
+    // desert dressing around the plate edge
+    const kinds = ['palmTall', 'palmShort', 'cactus', 'rockA', 'rockB', 'rockC', 'rockD', 'grass', 'grass', 'tree', 'trees', 'palmTall'];
+    const low = ['cactus', 'rockA', 'rockB', 'rockC', 'rockD', 'grass', 'grass', 'grass'];
+    for (let i = 0; i < 44; i++) {
+      const side = Math.floor(rnd() * 4), t = (rnd() * 2 - 1) * 3.0, d = 2.98 + rnd() * 0.12;
+      const pool = side === 1 ? low : kinds, k = pool[Math.floor(rnd() * pool.length)]; // front edge stays low so tiles stay readable
+      const [px, pz] = side < 2 ? [t, d * (side ? 1 : -1)] : [d * (side === 2 ? 1 : -1), t];
+      statics.put(k, px, 0, pz, 0.85 + rnd() * 0.4, rnd() * 6.28);
+    }
+    statics.put('wheelbarrow', 0.9, 0, 3.0, 1, 0.4); statics.put('crate', 1.3, 0, 3.02, 1, 0.2); statics.put('barrel', -1.2, 0, 3.02, 1, 0); statics.put('sack', -0.9, 0, 3.05, 1, 1); statics.put('cart', -2.6, 0, 3.0, 1.2, 1.7);
+    statics.build(false, true); lands.build(true, true);
+
+    for (const [id, c] of Object.entries(CITIES)) {
+      const t = BOARD[c.tile], s = labelSprite(c.name);
+      s.position.set(tileX(t.c), { ankara: 1.5, kirsehir: 1.12, konya: 1.15, kayseri: 1.05 }[id], tileZ(t.r)); scene.add(s); cityLabels.push(s);
+    }
+    // instanced coins + barricade pieces
+    const inst = (key, n) => { const p = parts(key)[0], m = new THREE.InstancedMesh(p.geo, p.mat, n); m.frustumCulled = false; m.count = 0; scene.add(m); return m; };
+    coinS = inst('coinSilver', 25 * 5); coinG = inst('coinGold', 25 * 5); fenceM = inst('fence', 25 * 6); crateM = inst('crate', 25);
+    built = true;
+  }
+
+  // ----- pawns -----
+  const clips = {};
+  function makePawn(i, color) {
+    const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS['pawn' + (i % 4)], g = loaded['pawn' + (i % 4)];
+    const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.2, 0.22, 0.05, 24), true), color), paint(norm(new THREE.TorusGeometry(0.205, 0.014, 6, 28).rotateX(Math.PI / 2).translate(0, 0.025, 0), true), 0xfff4d6)]), procMat);
+    disc.receiveShadow = true; disc.position.y = 0.025; body.position.y = 0.04;
+    const pw = { root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false };
+    const characterOk = g && (() => {
+      try {
+        const skins = []; g.scene.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
+        if (!skins.length) return false;
+        const geos = skins.map((s) => { const c = s.geometry.clone(); for (const k of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(k)) c.deleteAttribute(k); return c.index ? c.toNonIndexed() : c; });
+        const mat = lam(0xffffff, { map: [].concat(skins[0].material)[0].map });
+        const mesh = new THREE.SkinnedMesh(mergeGeometries(geos), mat);
+        for (const s of skins) s.parent.remove(s);
+        g.scene.add(mesh); mesh.bind(skins[0].skeleton, skins[0].bindMatrix);
+        mesh.castShadow = true; mesh.frustumCulled = false;
+        g.scene.scale.setScalar(cfg.scale); body.add(g.scene);
+        const a = loaded.anims;
+        if (a && a.animations.length) {
+          pw.mixer = new THREE.AnimationMixer(g.scene);
+          const find = (n) => a.animations.find((c) => c.name === n);
+          if (find('Idle_A')) { pw.idle = pw.mixer.clipAction(find('Idle_A')); pw.idle.time = Math.random() * 2; pw.idle.play(); }
+          if (find('Walking_A')) { pw.walk = pw.mixer.clipAction(find('Walking_A')); pw.walk.setEffectiveWeight(0); pw.walk.play(); }
+        }
+        return true;
+      } catch (e) { console.warn('pawn model failed', e); return false; }
+    })();
+    if (!characterOk) {
+      const m = lam(color), cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 14), m), ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), m);
+      cone.position.y = 0.2; ball.position.y = 0.47; cone.castShadow = ball.castShadow = true; body.add(cone, ball);
+    }
+    root.add(disc, body); scene.add(root); return pw;
+  }
+  const setWalk = (pw, on) => {
+    if (!pw.walk || !pw.idle) return;
+    const [a, b] = on ? [pw.walk, pw.idle] : [pw.idle, pw.walk];
+    a.enabled = true; a.setEffectiveWeight(1); b.setEffectiveWeight(0);
+    if (on) pw.walk.time = 0;
+  };
+  function pawnTarget(state, p) {
+    const t = state.tiles[state.players[p].pos], n = t.occupants.length, i = Math.max(0, t.occupants.indexOf(p));
+    const bx = tileX(t.c) + ART_OFF * 0.6, bz = tileZ(t.r) + ART_OFF + (t.kind === 'city' ? 0.06 : 0);
+    const a = (2 * Math.PI * i) / n - Math.PI / 2 + 0.4, r = n > 1 ? 0.2 : 0;
+    return V3(bx + Math.cos(a) * r, topOf(t), bz + Math.sin(a) * r);
+  }
+
+  // ----- camera -----
+  const dir = V3(0, Math.sin(0.95), Math.cos(0.95));
+  const fitPts = [];
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { fitPts.push(V3(sx * HALF, -0.16, sz * HALF), V3(sx * 2.2, 1.65, sz * 2.2)); }
+  let fitD = 12;
+  const cam = { tx: 0, tz: 0, k: 1 };
+  function applyCam() {
+    const tgt = V3(cam.tx, 0, cam.tz);
+    camera.position.copy(dir).multiplyScalar(fitD / cam.k).add(tgt); camera.lookAt(tgt); camera.updateMatrixWorld();
+  }
   function fitCamera(w, h) {
     camera.aspect = w / h;
+    const el = camera.aspect < 0.8 ? 1.1 : 0.95; // portrait phones: steeper (63 deg) so the board uses more of the height
+    dir.set(0, Math.sin(el), Math.cos(el));
     const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), tx = ty * camera.aspect, k = 0.9;
     camera.position.copy(dir).multiplyScalar(10); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
     let d = 0;
-    for (const c of corners) {
+    for (const c of fitPts) {
       const p = c.clone().applyMatrix4(camera.matrixWorldInverse), zrel = p.z + 10;
       d = Math.max(d, Math.abs(p.x) / (tx * k) + zrel, Math.abs(p.y) / (ty * k) + zrel);
     }
-    camera.position.copy(dir).multiplyScalar(d); camera.lookAt(0, 0, 0);
-    camera.updateProjectionMatrix();
+    fitD = d; camera.updateProjectionMatrix(); applyCam();
   }
 
-  // pawns
-  const pawns = [];
-  function makePawn(color) {
-    const g = new THREE.Group(), mat = lam(color);
-    const cone = new THREE.Mesh(pawnCone, mat); cone.position.y = 0.21;
-    const ball = new THREE.Mesh(pawnBall, mat); ball.position.y = 0.5;
-    g.add(cone, ball); scene.add(g); return g;
-  }
-  function pawnTarget(state, p) {
-    const t = state.tiles[state.players[p].pos], n = t.occupants.length, i = Math.max(0, t.occupants.indexOf(p));
-    const bx = tileX(t.c), bz = tileZ(t.r) + (t.kind === 'city' ? 0.18 : 0);
-    const a = (2 * Math.PI * i) / n - Math.PI / 2, r = n > 1 ? 0.2 : 0;
-    return new THREE.Vector3(bx + Math.cos(a) * r, tops[t.idx], bz + Math.sin(a) * r);
-  }
-
-  // animation loop (on demand)
+  // ----- animation loop (on demand; throttled idle loop only while character animations exist) -----
   const anims = new Map();
-  let raf = 0, pulse = false;
+  let raf = 0, pulse = false, lastT = 0, disposed = false;
   const anim = (key, dur, fn) => { anims.set(key, { t0: performance.now(), dur, fn }); kick(); };
+  const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+  const yawBusy = () => pawns.some((p) => Math.abs(wrap(p.yawT - p.yaw)) > 0.01);
+  const idleLoop = () => pawns.some((p) => p.mixer);
+  // per-tile dynamic state
+  const coins = BOARD.map(() => ({ s: 0, g: 0, pop: 1 })), closedU = BOARD.map(() => 0), closedWant = BOARD.map(() => false);
+  let hl = [];
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
+  function layout(now) {
+    // rings
+    for (let i = 0; i < 25; i++) {
+      const on = hl.includes(i), t = BOARD[i];
+      M.compose(V3(tileX(t.c), topOf(t) + 0.025 + (on ? 0.012 * Math.sin(now / 280 + i) : 0), tileZ(t.r)), Q.identity(), on ? V3(1, 1, 1) : V3(0, 0, 0));
+      rings.setMatrixAt(i, M);
+    }
+    rings.instanceMatrix.needsUpdate = true;
+    if (!built) return;
+    let ns = 0, ng = 0, nf = 0, nc = 0;
+    for (const t of BOARD) {
+      const x = tileX(t.c), z = tileZ(t.r), top = topOf(t), c = coins[t.idx];
+      for (let k = 0; k < c.s; k++) { M.compose(V3(x + 0.36, top + k * 0.04, z - 0.36), Q.identity(), V3(c.pop, c.pop, c.pop)); coinS.setMatrixAt(ns++, M); }
+      for (let k = 0; k < c.g; k++) { M.compose(V3(x + 0.17, top + k * 0.04, z - 0.4), Q.identity(), V3(c.pop, c.pop, c.pop)); coinG.setMatrixAt(ng++, M); }
+      const u = closedU[t.idx];
+      if (u > 0) {
+        const drop = (1 - u) * 0.5, sc = V3(u, u, u);
+        for (let k = 0; k < 4; k++) { M.compose(V3(x + Math.sin(k * Math.PI / 2) * 0.45 * u, top + drop, z + Math.cos(k * Math.PI / 2) * 0.45 * u), Q.setFromEuler(new THREE.Euler(0, k * Math.PI / 2, 0)), sc); fenceM.setMatrixAt(nf++, M); }
+        for (const a of [Math.PI / 4, -Math.PI / 4]) { M.compose(V3(x, top + drop + 0.03, z), Q.setFromEuler(new THREE.Euler(0, a, 0)), V3(u * 1.4, u, u)); fenceM.setMatrixAt(nf++, M); }
+        M.compose(V3(x, top + drop + 0.06, z), Q.setFromEuler(new THREE.Euler(0, 0.4, 0)), V3(u * 0.6, u * 0.6, u * 0.6)); crateM.setMatrixAt(nc++, M);
+      }
+    }
+    coinS.count = ns; coinG.count = ng; fenceM.count = nf; crateM.count = nc;
+    for (const m of [coinS, coinG, fenceM, crateM]) m.instanceMatrix.needsUpdate = true;
+  }
   function frame(now) {
     raf = 0;
+    if (disposed) return;
+    const busy = anims.size > 0 || pulse || yawBusy();
+    if (!busy && now - lastT < IDLE_MS) { raf = requestAnimationFrame(frame); return; }
+    const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000)); lastT = now;
     for (const [k, a] of anims) { const u = Math.min(1, Math.max(0, (now - a.t0) / a.dur)); a.fn(u); if (u >= 1) anims.delete(k); }
-    if (pulse) frameMat.opacity = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(now / 220));
+    for (const p of pawns) { p.yaw += wrap(p.yawT - p.yaw) * Math.min(1, dt * 14); p.body.rotation.y = p.yaw; if (p.mixer) p.mixer.update(dt); }
+    if (pulse) glow.opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now / 220)); else glow.opacity = 1;
+    layout(now);
     renderer.render(scene, camera);
-    if (anims.size || pulse) raf = requestAnimationFrame(frame);
+    if (anims.size || pulse || yawBusy() || idleLoop()) raf = requestAnimationFrame(frame);
   }
-  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+  function kick() { if (!raf && !disposed) raf = requestAnimationFrame(frame); }
 
-  // state sync (animations come from diffing against what is currently shown)
-  let first = true;
-  function render(state, { highlight = [] } = {}) {
+  // ----- state sync -----
+  let first = true, pending = null, curFocus = undefined;
+  function focusTo(idx) {
+    if (idx === curFocus) return;
+    curFocus = idx;
+    const from = { ...cam }, to = idx == null ? { tx: 0, tz: 0, k: 1 } : { tx: tileX(BOARD[idx].c) * 0.8, tz: tileZ(BOARD[idx].r) * 0.8, k: 1.4 };
+    if (first) { Object.assign(cam, to); applyCam(); return; }
+    anim('cam', 400, (u) => { const e = u * u * (3 - 2 * u); cam.tx = from.tx + (to.tx - from.tx) * e; cam.tz = from.tz + (to.tz - from.tz) * e; cam.k = from.k + (to.k - from.k) * e; applyCam(); });
+  }
+  function hop(pw, i, to) {
+    const from = pw.root.position.clone(), d = from.distanceTo(to);
+    const dur = d < 0.5 ? 220 : d < 1.8 ? 400 : Math.min(900, 400 + d * 120), h = d < 0.5 ? 0.03 : d < 1.8 ? 0.14 : Math.min(0.8, 0.3 + d * 0.18), walk = d >= 0.5;
+    if (d > 0.3) pw.yawT = Math.atan2(to.x - from.x, to.z - from.z);
+    if (walk) setWalk(pw, true);
+    pw.target.copy(to);
+    anim('p' + i, dur, (u) => {
+      const e = u * u * (3 - 2 * u); pw.root.position.lerpVectors(from, to, e); pw.root.position.y += Math.sin(Math.PI * u) * h;
+      if (u >= 1) { pw.root.position.copy(to); pw.yawT = 0; if (walk) setWalk(pw, false); }
+    });
+  }
+  function render(state, { highlight = [], focus = null } = {}) {
+    if (!built) { pending = [state, { highlight, focus }]; hl = highlight; pulse = highlight.length > 0; kick(); return; }
     state.players.forEach((pl, i) => {
       const to = pawnTarget(state, i);
       let pw = pawns[i];
-      if (!pw) { pw = pawns[i] = makePawn(pl.color); pw.position.copy(to); pw.userData.target = to; }
-      if (!pw.userData.target.equals(to)) {
-        const from = pw.position.clone(), h = Math.min(0.45, 0.15 + from.distanceTo(to) * 0.2);
-        pw.userData.target = to;
-        anim('p' + i, 350, (u) => { pw.position.lerpVectors(from, to, u); pw.position.y += Math.sin(Math.PI * u) * h; });
-      }
+      if (!pw) { pw = pawns[i] = makePawn(i, pl.color); pw.root.position.copy(to); pw.target.copy(to); }
+      else if (!pw.target.equals(to)) hop(pw, i, to);
     });
-    while (pawns.length > state.players.length) scene.remove(pawns.pop());
+    while (pawns.length > state.players.length) { const p = pawns.pop(); scene.remove(p.root); p.mixer && p.mixer.stopAllAction(); }
 
     for (const t of state.tiles) {
-      const n = Math.min(t.badges, MAX_COINS);
-      if (n !== coinCount[t.idx]) {
-        if (coinGroups[t.idx]) scene.remove(coinGroups[t.idx]);
-        coinGroups[t.idx] = null;
-        if (n) {
-          const g = new THREE.Group(); g.position.set(tileX(t.c) + 0.3, tops[t.idx], tileZ(t.r) - 0.3);
-          for (let k = 0; k < n; k++) { const c = new THREE.Mesh(coinGeo, coinMat); c.position.y = COIN_H / 2 + k * COIN_H; g.add(c); }
-          scene.add(g); coinGroups[t.idx] = g;
-          if (!first) anim('b' + t.idx, 300, (u) => g.scale.setScalar(1 + 0.45 * Math.sin(Math.PI * u)));
-        }
-        coinCount[t.idx] = n;
+      const c = coins[t.idx], s = Math.min(4, t.badges % 5), g = Math.min(5, Math.floor(t.badges / 5));
+      if (s !== c.s || g !== c.g) {
+        c.s = s; c.g = g;
+        if (!first) anim('b' + t.idx, 320, (u) => { c.pop = 1 + 0.5 * Math.sin(Math.PI * u); });
       }
-      if (t.closed && !barriers[t.idx]) {
-        const b = new THREE.Mesh(barGeo, barMat); b.position.set(tileX(t.c), tops[t.idx] + 0.11, tileZ(t.r));
-        scene.add(b); barriers[t.idx] = b;
+      if (t.closed !== closedWant[t.idx]) {
+        closedWant[t.idx] = t.closed;
+        const from = closedU[t.idx], to = t.closed ? 1 : 0;
+        if (first) closedU[t.idx] = to; else anim('c' + t.idx, 320, (u) => { closedU[t.idx] = from + (to - from) * u * u * (3 - 2 * u); });
       }
-      if (barriers[t.idx]) barriers[t.idx].visible = t.closed;
     }
-    frames.forEach((f, i) => { f.visible = highlight.includes(i); });
-    pulse = highlight.length > 0;
-    if (!pulse) frameMat.opacity = 1;
-    first = false;
-    kick();
+    hl = highlight; pulse = highlight.length > 0;
+    focusTo(focus == null ? null : focus);
+    first = false; kick();
   }
 
-  // resize
+  // ----- resize -----
   const parent = canvas.parentElement || canvas;
   function resize() {
     const w = Math.max(1, parent.clientWidth), h = Math.max(1, parent.clientHeight);
     renderer.setSize(w, h, false); fitCamera(w, h); kick();
   }
   const ro = new ResizeObserver(resize); ro.observe(parent); resize();
+  layout(0);
 
-  // picking: pointerdown/up closer than 8px = tap
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  // ----- picking: pointerdown/up closer than 8px = tap; pawns/cities get a screen-space proxy, otherwise ground plane -----
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), plane = new THREE.Plane(V3(0, 1, 0), -0.12), hitP = V3();
   let down = null;
   const onDown = (e) => { down = { x: e.clientX, y: e.clientY }; };
   const onUp = (e) => {
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null;
-    if (moved >= 8) return;
-    const r = canvas.getBoundingClientRect();
-    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(tileMeshes, false)[0];
-    if (hit && onTileTap) onTileTap(hit.object.userData.idx);
+    if (moved >= 8 || !onTileTap) return;
+    const r = canvas.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+    const scr = (v) => { const p = v.clone().project(camera); return [(p.x + 1) / 2 * r.width, (1 - p.y) / 2 * r.height]; };
+    let best = null, bd = 1e9;
+    const probe = (v, rad, idx) => { const [px, py] = scr(v), d = Math.hypot(px - sx, py - sy); if (d < rad && d < bd) { bd = d; best = idx; } };
+    pawns.forEach((p) => { const idx = tileAt(p.target.x, p.target.z); if (idx >= 0) probe(p.root.position.clone().add(V3(0, 0.3, 0)), 24, idx); });
+    for (const c of Object.values(CITIES)) { const t = BOARD[c.tile]; probe(V3(tileX(t.c), 0.5, tileZ(t.r)), 30, c.tile); }
+    if (best === null) {
+      ndc.set((sx / r.width) * 2 - 1, -(sy / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
+      if (ray.ray.intersectPlane(plane, hitP)) { const i = tileAt(hitP.x, hitP.z); if (i >= 0) best = i; }
+    }
+    if (best !== null) onTileTap(best);
   };
+  function tileAt(x, z) {
+    const c = Math.floor(x / P + 2.5), r = Math.floor(z / P + 2.5);
+    return c >= 0 && c < 5 && r >= 0 && r < 5 ? r * 5 + c : -1;
+  }
   const onCancel = () => { down = null; };
-  canvas.addEventListener('pointerdown', onDown);
-  canvas.addEventListener('pointerup', onUp);
-  canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onCancel);
+
+  function projectTile(idx) {
+    const t = BOARD[idx], r = canvas.getBoundingClientRect(), v = V3(tileX(t.c), topOf(t), tileZ(t.r));
+    camera.updateMatrixWorld(); v.project(camera);
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  }
+
+  const ready = Promise.all(jobs).then(() => {
+    try { buildWorld(); } catch (e) { console.error('buildWorld failed', e); }
+    if (pending) { const p = pending; pending = null; render(...p); }
+    onProgress && onProgress(1); kick();
+  }).catch((e) => { console.error(e); onProgress && onProgress(1); });
 
   function dispose() {
-    cancelAnimationFrame(raf); raf = 0; anims.clear(); pulse = false;
+    disposed = true; cancelAnimationFrame(raf); raf = 0; anims.clear(); pulse = false;
     ro.disconnect();
-    canvas.removeEventListener('pointerdown', onDown);
-    canvas.removeEventListener('pointerup', onUp);
-    canvas.removeEventListener('pointercancel', onCancel);
+    canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel);
+    pawns.forEach((p) => p.mixer && p.mixer.stopAllAction());
     scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
-      for (const m of [].concat(o.material || [])) { if (m.map) m.map.dispose(); m.dispose(); }
+      for (const m of [].concat(o.material || [])) { for (const k of ['map', 'emissiveMap']) if (m[k]) m[k].dispose(); m.dispose(); }
+      if (o.isInstancedMesh) o.dispose();
     });
     scene.clear(); renderer.dispose();
   }
-  return { render, dispose };
+  const info = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
+  return { ready, render, projectTile, dispose, info }; // info(): dev-only stats
 }
