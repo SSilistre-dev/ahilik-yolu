@@ -95,3 +95,69 @@ Kazanç = tamamlanan ticaretlerin toplam parası × çarpan.
 | 20 ve üstü | ×5 |
 
 Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
+
+## Demo kararları (Fable 5.1 ile tartışıldı)
+
+- Build yok, npm yok. Static `index.html` + ES modules.
+  three.js `0.160.0` importmap ile `cdn.jsdelivr.net`'ten yüklenir. Proje GitHub Pages'te olduğu gibi çalışır.
+- Varsayılan mod 1 insan + 1–3 bot. Eller açık; "cihazı ver" ekranı yok.
+- Bot aptal: göreve BFS ile en kısa `move` yapar, yoksa `pass` eder.
+  Bot takas, yol açma ve okuma yapmaz.
+- Kargo kartı yalnız `phase==='move' && movesThisTurn===0` iken oynanır.
+  Ahlak kartı açmak hamle sayılmaz. Kargo görev şehrine uçarsa ticaret tamamlanır.
+- Ahi Evran jokeri hareket, yol açma ve takasta her ilke yerine geçer.
+- `openRoad {tile}` aksiyonunun katkılarını engine deterministik hesaplar.
+  Önce aktif oyuncunun eşleşen kartları (joker dahil) alınır. Kalanı koltuk sırasıyla diğer oyunculardan tamamlanır.
+  Tam 4 kartta durulur. Aktif oyuncu en az 1 kart vermelidir.
+  Ödül 1 kart = 1 rozettir ve havuzdan verilir.
+- Ahlak kartıyla konan rozetler kasadan gelir (sınırsız). Ödül havuzu yalnız yol açınca boşalır.
+- Şehir kareleri hamle hedefi değildir. Görev şehrine komşu kareye basılınca piyon otomatik olarak şehre geçer.
+- Elin 6'ya tamamlanması `endTurn` ve `pass` içinde otomatik yapılır. Ayrı `refill` aksiyonu yok.
+- Grafik prosedüreldir: 7 ilke için CanvasTexture kullanılır. Bitmap ve PDF varlık kullanılmaz.
+  Kartlar, el ve log HTML'dir. 3B sahnede yalnız tahta, piyonlar, rozetler ve kapalı kare engelleri var.
+- Mobil kuralları:
+  - OrbitControls yok. Kamera sabit eğik açılı.
+  - Tap ile drag, 8px eşiğiyle ayrılır.
+  - Canvas'ta `touch-action:none` kullanılır.
+  - Render talep üzerine yapılır; sürekli loop yok.
+  - Gölge yok, `MeshLambertMaterial` kullanılır, DPR en çok 1.5.
+
+## Sözleşme (dondurulmuş)
+
+Statik veriler `src/data.js` içinde: `ILKELER`, `ILKE_IDS`, `CITIES`, `BOARD`, `neighbors`, `CARDS`, `HAND_SIZE`, `AWARD_START`, `PLAYER_COLORS`.
+Kartlara her yerde `cardId` ile başvurulur.
+
+```js
+state = {
+  seed, rng,                       // rng: mulberry32 internal uint32
+  phase: 'ahlak'|'close'|'move'|'over',
+  turn, active, startIdx,          // turn counter, active player idx, first player idx
+  endgame: false,                  // end triggered; game ends when turn wraps to startIdx
+  movesThisTurn: 0,
+  pendingClose: null,              // ilke id while phase==='close'
+  tiles: [25]{ idx, r, c, kind:'city'|'ilke', ilke, city, closed:false, closedBy:null, badges:0, occupants:[pIdx] }, // occupants ordered by arrival
+  awards: { [ilke]: 4 },
+  players: [{ name, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
+  decks: { yol:[], yolDiscard:[], ahlak:[], ahlakDiscard:[], ticaret:[] },
+}
+```
+
+`src/game.js` saf modüldür; DOM ve three kullanmaz. `apply` girdiyi değiştirmez (`structuredClone`).
+- `newGame({ players:[{name,bot}], seed }) -> state`
+- `legalActions(state) -> Action[]`
+- `apply(state, action) -> { state, events }`. Her event `{ type, text, ...detay }` şeklindedir; `text` Türkçe log satırıdır.
+- `score(state) -> [{ pIdx, money, badges, mult, total, rank }]` (rank'e göre sıralı)
+
+Aksiyonlar:
+`{type:'drawAhlak'}` · `{type:'closeTile',tile}` · `{type:'move',card,tile}` · `{type:'kargo',card,city}` · `{type:'readText'}` · `{type:'trade',withPlayer,give,want}` · `{type:'openRoad',tile}` · `{type:'pass'}` · `{type:'endTurn'}`
+
+`src/bot.js`: `botAction(state) -> Action`.
+
+`src/scene.js`: `createScene(canvas, { onTileTap(idx) }) -> { render(state, { highlight:[idx] }), dispose() }`.
+Animasyon önceki ve yeni state farkından türetilir.
+
+`src/ui.js`: `createUI(root, { onAction(action), onTileHighlight(idxs) }) -> { render(state, legal, events) }`.
+
+`src/main.js` + `index.html`: entegrasyon katmanı. Bu dosyaları yalnız entegratör yazar.
+
+`fixtures/*.json`: elle hazırlanmış state'ler. Scene ve ui engine olmadan bunlarla geliştirilir.
