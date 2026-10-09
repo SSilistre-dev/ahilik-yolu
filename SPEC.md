@@ -304,3 +304,6 @@ state += {
   - Takas kabul: aldığı kart istediği kart kadar işine yarıyorsa ya da istenen kart yolunda gerekmiyorsa kabul eder.
   - Yol katkısı: rozet kazandırdığı için, kendi bir sonraki adımına gereken kart hariç verir.
 - Glue: bot zamanlayıcısı `players[actor(state)].bot` ile karar verir. Undo yalnız `move` için ve yalnız `pending` yokken.
+- Uygulamada eklenen alanlar: `offersThisTurn` ve `roadTries` (tur içi sayaçlar, `endTurn`'de 0; bot en çok 2 teklif, 1 yol denemesi yapar).
+  `refill` event'i tur sonunda da çıkar. `game.js` ayrıca `WANT_KINDS` (9 tür) ve `wantKind(cardId)` export eder.
+  Kendi türünü isteyen takas teklifi yasal değildir.

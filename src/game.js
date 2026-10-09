@@ -1,4 +1,4 @@
-// Pure rules engine. No DOM, no three. State is plain JSON (see SPEC.md contract).
+// Pure rules engine. No DOM, no three. State is plain JSON (see SPEC.md contract, v4).
 import { ILKELER, ILKE_IDS, CITIES, BOARD, neighbors, CARDS, HAND_SIZE, AWARD_START, PLAYER_COLORS } from './data.js';
 
 // ---- rng (mulberry32, state.rng is the internal uint32) ----
@@ -20,12 +20,20 @@ const log = (ev, type, text, extra = {}) => ev.push({ type, text, ...extra });
 // distinct kind of a yol card: ilke (+text variant), joker, kargo
 const kind = (id) => { const c = CARDS[id]; return c.joker ? 'joker' : c.kargo ? 'kargo' : c.ilke + (c.hasText ? '*' : ''); };
 const dedupe = (cards) => { const seen = new Set(); return cards.filter((id) => !seen.has(kind(id)) && seen.add(kind(id))); };
+// what a trade offer asks for: an ilke id, 'ahievran' or 'kargo'
+export const WANT_KINDS = [...ILKE_IDS, 'ahievran', 'kargo'];
+export const wantKind = (id) => { const c = CARDS[id]; return c.joker ? 'ahievran' : c.kargo ? 'kargo' : c.ilke; };
+// cards that count for a closed road of this ilke: own ilke first, then jokers (deterministic order)
+const roadCards = (hand, ilke) => [...hand.filter((id) => CARDS[id].ilke === ilke), ...hand.filter((id) => CARDS[id].joker)];
 
-export function newGame({ players, seed = 1 }) {
-  need(players.length >= 2 && players.length <= 4, '2-4 oyuncu gerekli');
+export function newGame({ players, seed = 1, startIdx = 0 }) {
+  need(players.length >= 2 && players.length <= 6, '2-6 oyuncu gerekli');
+  need(startIdx >= 0 && startIdx < players.length, 'geçersiz başlangıç oyuncusu');
   const s = {
-    seed, rng: seed >>> 0, phase: 'ahlak', turn: 0, active: 0, startIdx: 0, endgame: false,
-    movesThisTurn: 0, pendingClose: null, moveDone: false, // moveDone: additive field, set after a trade ends movement
+    seed, rng: seed >>> 0, phase: 'ahlak', turn: 0, active: startIdx, startIdx, endgame: false,
+    movesThisTurn: 0, pendingClose: null, moveDone: false, // moveDone: set after a trade ends movement
+    pending: null, declined: [], // SPEC v4
+    offersThisTurn: 0, roadTries: 0, // extra per-turn counters (bot loop guards), reset in endTurn
     tiles: BOARD.map((t) => ({ ...t, closed: false, closedBy: null, badges: 0, occupants: [] })),
     awards: Object.fromEntries(ILKE_IDS.map((i) => [i, AWARD_START])),
     players: [], decks: { yol: [], yolDiscard: [], ahlak: [], ahlakDiscard: [], ticaret: [] },
@@ -50,6 +58,13 @@ function drawYol(s, p, n) {
     if (!s.decks.yol.length) return;
     p.hand.push(s.decks.yol.pop());
   }
+}
+
+function refill(s, pi, ev) {
+  const p = s.players[pi], before = p.hand.length;
+  drawYol(s, p, HAND_SIZE - before);
+  const n = p.hand.length - before;
+  if (n > 0) log(ev, 'refill', `${p.name} eline ${n} kart çekti.`, { pIdx: pi, n });
 }
 
 function setEnd(s, ev, why) {
@@ -97,13 +112,14 @@ function deliver(s, pi, ev) {
 
 function endTurn(s, ev) {
   const p = s.players[s.active];
-  drawYol(s, p, HAND_SIZE - p.hand.length);
+  refill(s, s.active, ev);
   const next = (s.active + 1) % s.players.length;
   log(ev, 'endTurn', `${p.name} turunu bitirdi.`, { pIdx: s.active });
   s.turn++; s.movesThisTurn = 0; s.moveDone = false; s.pendingClose = null; p.pendingText = null;
+  s.pending = null; s.declined = []; s.offersThisTurn = 0; s.roadTries = 0;
   s.active = next;
   if (next === s.startIdx && s.endgame) { s.phase = 'over'; log(ev, 'over', 'Oyun bitti.'); }
-  else s.phase = 'ahlak';
+  else { s.phase = 'ahlak'; refill(s, next, ev); } // rule 26: top up to 6 before the ahlak card
 }
 
 const moveTargets = (s, p, id) => {
@@ -112,49 +128,91 @@ const moveTargets = (s, p, id) => {
   return neighbors(p.pos).filter((t) => { const T = s.tiles[t]; return T.kind === 'ilke' && !T.closed && (c.joker || T.ilke === c.ilke); });
 };
 
-// Deterministic contribution for openRoad: active first (ilke cards, then jokers), then others by seat order.
-function contribution(s, tile) {
-  const T = s.tiles[tile];
-  if (!T || !T.closed) return null;
+// legal move + kargo actions of the active player (empty => pass is allowed)
+function moveOptions(s, p) {
   const out = [];
-  let left = 4;
-  for (let k = 0; k < s.players.length && left; k++) {
-    const pi = (s.active + k) % s.players.length, hand = s.players[pi].hand;
-    const cards = [...hand.filter((id) => CARDS[id].ilke === T.ilke), ...hand.filter((id) => CARDS[id].joker)].slice(0, left);
-    if (cards.length) { out.push({ pIdx: pi, cards }); left -= cards.length; }
-  }
-  return left === 0 && out[0].pIdx === s.active ? out : null;
+  for (const card of dedupe(p.hand)) for (const tile of moveTargets(s, p, card)) out.push({ type: 'move', card, tile });
+  const kargo = p.hand.find((id) => CARDS[id].kargo);
+  if (kargo && s.movesThisTurn === 0) for (const city of Object.keys(CITIES)) if (cityTile(city) !== p.pos) out.push({ type: 'kargo', card: kargo, city });
+  return out;
+}
+const canPass = (s, p) => s.phase === 'move' && !s.moveDone && s.movesThisTurn === 0 && !moveOptions(s, p).length;
+
+export function actor(s) {
+  const pd = s.pending;
+  return pd ? (pd.kind === 'trade' ? pd.to : pd.ask) : s.active;
 }
 
 export function legalActions(s) {
-  const p = s.players[s.active], out = [];
+  if (s.phase === 'over') return [];
+  const pd = s.pending, out = [];
+  if (pd?.kind === 'trade') {
+    const hand = s.players[pd.to].hand;
+    for (const card of dedupe(hand.filter((id) => wantKind(id) === pd.want))) out.push({ type: 'respondTrade', accept: true, card });
+    out.push({ type: 'respondTrade', accept: false });
+    return out;
+  }
+  if (pd?.kind === 'road') {
+    const cards = roadCards(s.players[pd.ask].hand, pd.ilke);
+    out.push({ type: 'contribute', cards: [] });
+    for (let n = 1; n <= Math.min(pd.need, cards.length); n++) out.push({ type: 'contribute', cards: cards.slice(0, n) });
+    return out;
+  }
+  const p = s.players[s.active];
   if (s.phase === 'ahlak') return [{ type: 'drawAhlak' }];
   if (s.phase === 'close') {
     return s.tiles.filter((t) => t.ilke === s.pendingClose && !t.closed && !t.occupants.length).map((t) => ({ type: 'closeTile', tile: t.idx }));
   }
-  if (s.phase !== 'move') return out;
   if (p.pendingText) out.push({ type: 'readText' });
   if (!s.moveDone) {
-    for (const card of dedupe(p.hand)) for (const tile of moveTargets(s, p, card)) out.push({ type: 'move', card, tile });
-    const kargo = p.hand.find((id) => CARDS[id].kargo);
-    if (kargo && s.movesThisTurn === 0) for (const city of Object.keys(CITIES)) if (cityTile(city) !== p.pos) out.push({ type: 'kargo', card: kargo, city });
+    const mv = moveOptions(s, p);
+    out.push(...mv);
     s.players.forEach((o, withPlayer) => {
-      if (withPlayer !== s.active) for (const give of dedupe(p.hand)) for (const want of dedupe(o.hand)) out.push({ type: 'trade', withPlayer, give, want });
+      if (withPlayer === s.active) return;
+      for (const give of dedupe(p.hand)) for (const want of WANT_KINDS) {
+        if (want !== wantKind(give) && !s.declined.some((d) => d.to === withPlayer && d.want === want)) out.push({ type: 'offerTrade', withPlayer, give, want });
+      }
     });
-    for (const t of s.tiles) if (contribution(s, t.idx)) out.push({ type: 'openRoad', tile: t.idx });
-    out.push({ type: 'pass' });
+    for (const t of s.tiles) {
+      if (!t.closed) continue;
+      const cards = roadCards(p.hand, t.ilke);
+      for (let n = 1; n <= Math.min(4, cards.length); n++) out.push({ type: 'openRoad', tile: t.idx, cards: cards.slice(0, n) });
+    }
+    if (!mv.length && s.movesThisTurn === 0) out.push({ type: 'pass' });
   }
-  out.push({ type: 'endTurn' });
+  if (s.movesThisTurn > 0 || s.moveDone) out.push({ type: 'endTurn' });
   return out;
 }
+
+// Road opens: discard cards + the negative ahlak card, award badges per contributed card.
+function roadOpened(s, ev, me, T, offers) {
+  for (const { pIdx, cards } of offers) {
+    const q = s.players[pIdx], n = Math.min(cards.length, s.awards[T.ilke]);
+    for (const id of cards) { q.hand.splice(q.hand.indexOf(id), 1); s.decks.yolDiscard.push(id); }
+    s.awards[T.ilke] -= n; q.badges += n;
+  }
+  s.decks.ahlakDiscard.push(T.closedBy);
+  T.closed = false; T.closedBy = null;
+  s.pending = null;
+  log(ev, 'openRoad', `${s.players[me].name} ${ILKELER[T.ilke].name} yolunu açtı (${offers.map((x) => `${s.players[x.pIdx].name}: ${x.cards.length}`).join(', ')}).`, { pIdx: me, tile: T.idx, contrib: offers });
+  if (ILKE_IDS.every((i) => s.awards[i] === 0)) setEnd(s, ev, 'ödül havuzları boşaldı');
+}
+
+const askNext = (s, ev, tile, ask, needN) => {
+  s.pending.ask = ask; s.pending.need = needN;
+  log(ev, 'roadAsk', `${s.players[ask].name}, yolu açmak için ${needN} kart daha gerekiyor. Katkı verir misin?`, { tile, ask, need: needN });
+};
 
 export function apply(state, a) {
   const s = structuredClone(state), ev = [], p = s.players[s.active], me = s.active;
   need(s.phase !== 'over', 'oyun bitti');
-  if (a.type !== 'readText') p.pendingText = null;
+  const resp = a.type === 'respondTrade' || a.type === 'contribute';
+  need(resp ? s.pending?.kind === (a.type === 'respondTrade' ? 'trade' : 'road') : !s.pending, 'bekleyen cevap var');
+  if (!resp && a.type !== 'readText' && a.type !== 'offerTrade') p.pendingText = null;
   const inMove = () => need(s.phase === 'move');
   const free = () => { inMove(); need(!s.moveDone); };
   const discard = (id) => { p.hand.splice(p.hand.indexOf(id), 1); s.decks.yolDiscard.push(id); };
+  const uniq = (c) => Array.isArray(c) && new Set(c).size === c.length;
 
   switch (a.type) {
     case 'drawAhlak': {
@@ -226,38 +284,62 @@ export function apply(state, a) {
       log(ev, 'read', `${p.name} yazıyı okudu, +1 rozet.`, { pIdx: me });
       break;
     }
-    case 'trade': {
+    case 'offerTrade': {
       free();
       const o = s.players[a.withPlayer];
-      need(o && a.withPlayer !== me && p.hand.includes(a.give) && o.hand.includes(a.want), 'geçersiz takas');
-      p.hand[p.hand.indexOf(a.give)] = a.want; o.hand[o.hand.indexOf(a.want)] = a.give;
-      log(ev, 'swap', `${p.name} ile ${o.name} kart takas etti.`, { pIdx: me, withPlayer: a.withPlayer, give: a.give, want: a.want });
+      need(o && a.withPlayer !== me && p.hand.includes(a.give) && WANT_KINDS.includes(a.want) && wantKind(a.give) !== a.want, 'geçersiz teklif');
+      need(!s.declined.some((d) => d.to === a.withPlayer && d.want === a.want), 'teklif daha önce reddedildi');
+      s.pending = { kind: 'trade', from: me, to: a.withPlayer, give: a.give, want: a.want };
+      s.offersThisTurn++;
+      log(ev, 'tradeOffer', `${p.name}, ${o.name} oyuncusuna takas teklif etti.`, { from: me, to: a.withPlayer, give: a.give, want: a.want });
+      break;
+    }
+    case 'respondTrade': {
+      const pd = s.pending, o = s.players[pd.to];
+      if (a.accept) {
+        need(o.hand.includes(a.card) && wantKind(a.card) === pd.want, 'geçersiz takas kartı');
+        p.hand[p.hand.indexOf(pd.give)] = a.card; o.hand[o.hand.indexOf(a.card)] = pd.give;
+        log(ev, 'swap', `${p.name} ile ${o.name} kart takas etti.`, { pIdx: me, withPlayer: pd.to, give: pd.give, want: a.card });
+      } else {
+        s.declined.push({ to: pd.to, want: pd.want });
+        log(ev, 'tradeDeclined', `${o.name} takas teklifini reddetti.`, { pIdx: pd.to, from: me, want: pd.want });
+      }
+      s.pending = null;
       break;
     }
     case 'openRoad': {
       free();
-      const con = contribution(s, a.tile);
-      need(con, 'yol açılamaz');
       const T = s.tiles[a.tile];
-      for (const { pIdx, cards } of con) {
-        const q = s.players[pIdx], n = Math.min(cards.length, s.awards[T.ilke]);
-        for (const id of cards) { q.hand.splice(q.hand.indexOf(id), 1); s.decks.yolDiscard.push(id); }
-        s.awards[T.ilke] -= n; q.badges += n;
-      }
-      s.decks.ahlakDiscard.push(T.closedBy);
-      T.closed = false; T.closedBy = null;
-      log(ev, 'openRoad', `${p.name} ${ILKELER[T.ilke].name} yolunu açtı (${con.map((x) => `${s.players[x.pIdx].name}: ${x.cards.length}`).join(', ')}).`, { pIdx: me, tile: a.tile, contrib: con });
-      if (ILKE_IDS.every((i) => s.awards[i] === 0)) setEnd(s, ev, 'ödül havuzları boşaldı');
+      need(T && T.closed, 'yol açılamaz');
+      const own = roadCards(p.hand, T.ilke);
+      need(uniq(a.cards) && a.cards.length >= 1 && a.cards.length <= 4 && a.cards.every((id) => own.includes(id)), 'geçersiz kart');
+      s.roadTries++;
+      const offers = [{ pIdx: me, cards: [...a.cards] }];
+      if (a.cards.length === 4) { roadOpened(s, ev, me, T, offers); break; }
+      s.pending = { kind: 'road', tile: a.tile, ilke: T.ilke, offers, ask: null, need: null };
+      askNext(s, ev, a.tile, (me + 1) % s.players.length, 4 - a.cards.length);
+      break;
+    }
+    case 'contribute': {
+      const pd = s.pending, q = s.players[pd.ask], T = s.tiles[pd.tile];
+      need(uniq(a.cards) && a.cards.length <= pd.need && a.cards.every((id) => roadCards(q.hand, pd.ilke).includes(id)), 'geçersiz katkı');
+      if (a.cards.length) { pd.offers.push({ pIdx: pd.ask, cards: [...a.cards] }); pd.need -= a.cards.length; }
+      if (pd.need === 0) { roadOpened(s, ev, me, T, pd.offers); break; }
+      const next = (pd.ask + 1) % s.players.length;
+      if (next === me) {
+        s.pending = null;
+        log(ev, 'roadFailed', `${ILKELER[T.ilke].name} yolu açılamadı; kimse kart kaybetmedi.`, { tile: pd.tile });
+      } else askNext(s, ev, pd.tile, next, pd.need);
       break;
     }
     case 'pass': {
-      free();
+      need(canPass(s, p), 'pas geçilemez');
       s.decks.yolDiscard.push(...p.hand.splice(0));
       log(ev, 'pass', `${p.name} pas geçti, elini yeniledi.`, { pIdx: me });
       endTurn(s, ev);
       break;
     }
-    case 'endTurn': inMove(); endTurn(s, ev); break;
+    case 'endTurn': inMove(); need(s.movesThisTurn > 0 || s.moveDone, 'önce piyon ilerletilmeli'); endTurn(s, ev); break;
     default: throw new Error('bilinmeyen aksiyon');
   }
   return { state: s, events: ev };
@@ -270,5 +352,10 @@ export function score(s) {
     return { pIdx, money, badges: p.badges, mult, total: money * mult, trades: p.trades.length };
   });
   rows.sort((x, y) => y.total - x.total || y.badges - x.badges || y.trades - x.trades || x.pIdx - y.pIdx);
-  return rows.map(({ trades, ...r }, i) => ({ ...r, rank: i + 1 }));
+  let rank = 0;
+  return rows.map(({ trades, ...r }, i) => {
+    const prev = rows[i - 1];
+    if (!prev || prev.total !== r.total || prev.badges !== r.badges || prev.trades !== trades) rank = i + 1;
+    return { ...r, rank };
+  });
 }
