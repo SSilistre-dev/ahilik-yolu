@@ -3,20 +3,28 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#2b1d12">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
   <title>Ahilik Yolu – Ahlakın Yolu</title>
-  <link rel="stylesheet" href="style.css?v=1">
+  <link rel="stylesheet" href="style.css?v=2">
+  <style>
+    #mute { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; z-index: 50; border: 0; border-radius: 50%; background: rgba(43,29,18,.75); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+  </style>
   <!-- Bump v on every release: modules are mapped to versioned URLs so stale browser caches are bypassed. -->
   <script type="importmap">
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "./src/main.js": "./src/main.js?v=1",
-      "./src/data.js": "./src/data.js?v=1",
-      "./src/game.js": "./src/game.js?v=1",
-      "./src/bot.js": "./src/bot.js?v=1",
-      "./src/scene.js": "./src/scene.js?v=1",
-      "./src/ui.js": "./src/ui.js?v=1"
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "./src/main.js": "./src/main.js?v=2",
+      "./src/data.js": "./src/data.js?v=2",
+      "./src/game.js": "./src/game.js?v=2",
+      "./src/bot.js": "./src/bot.js?v=2",
+      "./src/scene.js": "./src/scene.js?v=2",
+      "./src/ui.js": "./src/ui.js?v=2",
+      "./src/sfx.js": "./src/sfx.js?v=2",
+      "./src/assets.js": "./src/assets.js?v=2"
     }
   }
   </script>
@@ -24,6 +32,7 @@
 <body>
   <div id="stage"><canvas id="board"></canvas></div>
   <div id="ui"></div>
+  <button id="mute" type="button" aria-label="Sesi aç/kapat">🔊</button>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
