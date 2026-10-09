@@ -261,3 +261,88 @@ i.ay-dim{position:absolute;pointer-events:none;transition:all .25s}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
+
+/* ===== v4: gizli el, takas, ortak yol, rozet, kurulum ===== */
+.ay-coin.xs{width:10px;height:10px;margin:0 1px 0 4px;vertical-align:-1px;box-shadow:inset 0 0 0 1px #a86d08,0 1px 1px rgba(0,0,0,.5)}
+.ay-coin.silver{background:radial-gradient(circle at 35% 30%,#fff,#dfe3e8 45%,#8c939c);box-shadow:inset 0 0 0 1px #6b727b,0 1px 1px rgba(0,0,0,.5)}
+.ay-bdg b{margin-right:1px}
+.ay-hc{display:inline-flex;align-items:center;gap:3px}
+.ay-mc{display:inline-block;width:8px;height:12px;border-radius:2px;background:#fff4d6;box-shadow:0 0 0 1px #3a2410,2px 1px 0 -0px #c9b78f}
+.ay-chip .r2{gap:6px;font-size:12px}
+.ay-chip.mini{flex:1 1 104px;min-width:104px;max-width:150px;flex-direction:column;align-items:stretch;gap:2px;padding:3px 6px 4px;font-size:12px}
+.ay-chip.mini .r1{display:flex;align-items:center;gap:5px;min-width:0}
+.ay-chip.mini .r2{display:flex;align-items:center;gap:6px}
+.ay-chip.asked{opacity:1;border-color:#7fcf6a;box-shadow:0 0 0 2px rgba(127,207,106,.4),0 0 14px 2px rgba(127,207,106,.5)}
+.ay-ring.big{width:64px;height:64px;border-width:6px;font-size:28px;line-height:52px}
+
+/* perde */
+.ay-curtain{position:absolute;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;
+  background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--pc,#888) 35%,#2b1d12),#1a110a 75%)}
+.cu-box{display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;max-width:380px}
+.cu-box h2{margin:0;font:700 26px/1.2 Georgia,serif;color:var(--gold)}
+.cu-box h2 b{color:#fff}
+.cu-box p{margin:0;opacity:.85;font-size:15px}
+.cu-box .ay-btn{min-width:200px;margin-top:6px}
+
+/* takas / yol sayfası */
+.ay-sheetwrap{z-index:32;align-items:flex-end;padding:0;background:rgba(10,6,2,.55)}
+.ay-compose{max-width:520px;margin:0 auto;max-height:82dvh}
+.ay-sbody{overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+.ay-step{font-weight:700;font-size:13px;color:var(--gold)}
+.ay-step b{display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#3a2410;text-align:center;line-height:20px;font-size:12px;margin-right:4px}
+.ay-picks{display:flex;gap:8px;flex-wrap:wrap}
+.ay-pick{width:46px;padding:0;border:2px solid transparent;border-radius:8px;background:#222;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,.5);flex:none}
+.ay-pick img{display:block;width:100%;aspect-ratio:198/360;object-fit:cover}
+.ay-pick.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 14px rgba(255,215,94,.7);transform:translateY(-3px)}
+.ay-compose .dot,.ay-st .dot{display:inline-block;width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 1.5px rgba(0,0,0,.5);flex:none}
+.ay-wants{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:6px}
+.ay-want{display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px 2px;min-height:64px;border-radius:12px;border:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);font-size:11px;font-weight:700;line-height:1.1}
+.ay-want img{width:34px;height:34px;border-radius:50%;object-fit:cover;border:3px solid var(--c);box-sizing:border-box}
+.ay-want:disabled{opacity:.3;pointer-events:none}
+.ay-want.sel{background:rgba(127,207,106,.28);border-color:#9be27f;box-shadow:0 0 10px rgba(127,207,106,.5)}
+.ay-opts{display:flex;flex-direction:column;gap:8px}
+.ay-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:48px;padding:6px 12px;border-radius:14px;border:2px solid #8a6b44;background:linear-gradient(180deg,#6a5035,#3f2f1f);box-shadow:0 3px 0 #1f150a;font-size:15px;text-align:left}
+.ay-opt:active{transform:translateY(2px)}
+.ay-opt.no{background:rgba(255,255,255,.06);box-shadow:none;border-color:rgba(255,255,255,.2)}
+.ay-opt .ths{display:flex;gap:3px}
+.ay-th{width:24px;aspect-ratio:198/360;object-fit:cover;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.6)}
+.ay-compose>.ay-btn.big{width:100%}
+.ay-compose>p{margin:0}
+.ay-dialog.ask{border-color:var(--pc,var(--gold2))}
+.ay-line{margin:0;font-size:16px;line-height:1.4}
+.ay-swap{display:flex;align-items:center;justify-content:center;gap:12px}
+.ay-swap figure{margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;max-width:110px;text-align:center}
+.ay-swap img{width:54px;aspect-ratio:198/360;object-fit:cover;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.6)}
+.ay-swap .wnt{display:block;width:60px;height:60px;border-radius:50%;border:4px solid var(--c);overflow:hidden;box-sizing:border-box}
+.ay-swap .wnt img{width:100%;height:100%;aspect-ratio:auto;border-radius:0;box-shadow:none}
+.ay-swap .arr{font-size:28px;color:var(--gold)}
+.ay-slots{display:flex;gap:8px;justify-content:center}
+.ay-slots i{width:34px;height:20px;border-radius:5px;border:2px dashed rgba(255,255,255,.35)}
+.ay-slots i.on{border:2px solid var(--gold);background:var(--gold2)}
+.ay-dialog.ask .ay-btn.big{width:100%}
+
+/* kurulum */
+.ay-toggles.five{grid-template-columns:repeat(5,1fr);gap:6px}
+.ay-toggles.five .ay-tg{min-height:56px}
+.ay-toggles.five .ay-tg b{font-size:24px}
+.ay-field small{font-weight:500;opacity:.8}
+.ay-players{display:flex;flex-direction:column;gap:6px}
+.ay-prow{display:flex;align-items:center;gap:8px}
+.ay-prow .ay-input{margin:0;min-width:0;flex:1 1 auto;min-height:44px}
+.ay-seg{display:flex;flex:none;border-radius:12px;overflow:hidden;border:2px solid #8a6b44}
+.ay-seg button{min-height:40px;padding:0 10px;border:0;background:#3f2f1f;font-weight:800;font-size:13px}
+.ay-seg button.sel{background:linear-gradient(180deg,#ffe58a,#e8a21a);color:#3a2410}
+.ay-starters{display:flex;flex-wrap:wrap;gap:6px}
+.ay-st{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border-radius:999px;border:2px solid #8a6b44;background:#3f2f1f;font-weight:700;max-width:100%}
+.ay-st .dot{background:var(--pc)}
+.ay-st.sel{background:linear-gradient(180deg,#ffe58a,#e8a21a);color:#3a2410;border-color:#fff1b3}
+.ay-warn{font-weight:700;color:#ffb3aa;text-align:center}
+@media (max-width:420px){.ay-sbox{gap:8px}.ay-sbox .ay-logo{width:min(60%,240px)}.ay-seg button{padding:0 8px}.ay-prow{gap:6px}}
+.ay-chips.many{gap:3px 4px}
+.ay-chips.many .ay-chip.mini{flex:1 1 calc(33% - 6px);min-width:0;max-width:none;padding:3px 5px 3px}
+.ay-chips.many .ay-chip .r2{gap:4px;font-size:11.5px}
+.ay-chips.many .ay-chip.mini.active{opacity:1;border-color:var(--gold);transform:none;animation:glow 1.8s ease-in-out infinite}
+.ay-chips.many .ay-coin.xs{margin-left:2px}
+.ay-wants{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px}
+.ay-want{min-height:58px;font-size:10.5px}
+.ay-want img{width:30px;height:30px}

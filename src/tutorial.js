@@ -15,6 +15,7 @@ const TEXT = {
   board: '<b>Parlayan kare</b> = gidebileceğin yer. <b>Altın noktalar</b> hedefe giden en kısa yol. <b>Bayrak</b> = hedef şehrin.',
   after: 'Harika! Kartın bitene kadar ilerleyebilirsin. Sonra <b>Turu Bitir</b>.',
   noMove: 'Hamle kalmadı. <b>Turu Bitir</b>\'e dokun.',
+  noPass: 'Hareket edecek kartın yok. <b>Takas</b> dene ya da <b>Pas</b> de.',
   bots: 'Şimdi rakipler oynuyor. Ekrana dokunarak hızlandırabilirsin.',
 };
 
@@ -41,14 +42,14 @@ export function createTutorial(root, { art, url }) {
   function derive() {
     if (!S || !coach || introOpen || helpOpen) return null;
     const { st, legal } = S, has = t => legal.some(a => a.type === t);
-    if (st.phase === 'over') return null;
+    if (st.phase === 'over' || S.els.blocked?.()) return null;
     if (st.players[st.active].bot) return hadMove ? 'bots' : null;
     if (has('readText') && st.players[st.active].pendingText) return null;
     if (st.phase === 'ahlak') return has('drawAhlak') ? 'draw' : null;
     if (Date.now() < quiet) return null; // ahlak reveal animasyonu bitsin
     if (st.phase === 'close') return 'close';
     hadMove = true;
-    if (!legal.some(a => a.type === 'move' || a.type === 'kargo')) return has('endTurn') || has('pass') ? 'noMove' : null;
+    if (!legal.some(a => a.type === 'move' || a.type === 'kargo')) return has('endTurn') ? 'noMove' : has('pass') ? 'noPass' : null;
     if (st.movesThisTurn > 0) return 'after';
     if (S.els.selected()) return 'board';
     if (resultUntil > Date.now()) return 'result';
@@ -60,7 +61,7 @@ export function createTutorial(root, { art, url }) {
   function target(name) {
     const { els } = S, H = innerHeight;
     if (name === 'draw') return R(els.acts.querySelector('[data-a="draw"]'));
-    if (name === 'after' || name === 'noMove') return R(els.acts.querySelector('[data-a="end"]') ?? els.acts.querySelector('[data-a="pass"]'));
+    if (name === 'after' || name === 'noMove' || name === 'noPass') return R(els.acts.querySelector('[data-a="end"]') ?? els.acts.querySelector('[data-a="pass"]'));
     if (name === 'hand') { const r = R(els.fan); return r && { left: r.left, right: r.right, top: r.top + 18, bottom: Math.min(r.bottom, H), width: r.width, height: Math.min(r.bottom, H) - r.top - 18 }; }
     if (name === 'board' || name === 'close') {
       const hb = els.hud.getBoundingClientRect().bottom + 6, dr = els.dock.getBoundingClientRect(), desk = innerWidth > 900;
@@ -179,11 +180,14 @@ export function createTutorial(root, { art, url }) {
     el.innerHTML = `<div class="tt-sheet"><div class="ay-sheethead"><b>Nasıl Oynanır?</b><button class="ay-btn sm" data-t="x">Kapat</button></div>
       <div class="hs-body">
       ${sec('🎯 Amaç', `${img(t ? art(t) : url('ticaret-ankara-2'))}${img(url(`city-${city}`))}`, 'Sen bir tüccarsın. <b>Görev kartındaki şehre</b> git, ticaret yap, para kazan. Şehre komşu kareye varınca ticaret otomatik tamamlanır ve yeni görev gelir.')}
-      ${sec('🔁 Tur sırası', `${img(url('ahlak-back'))}${img(url('yol-comert'))}`, '<b>1)</b> Ahlak kartı aç. <b>2)</b> Yol kartlarınla ilerle. <b>3)</b> Turu bitir; elin 6 karta tamamlanır.')}
+      ${sec('🔁 Tur sırası', `${img(url('ahlak-back'))}${img(url('yol-comert'))}`, 'Turun başında elin <b>6 karta tamamlanır</b>. <b>1)</b> Ahlak kartı aç. <b>2)</b> Yol kartlarınla ilerle (en az bir adım atmalısın). <b>3)</b> Turu bitir.')}
+      ${sec('👥 2–6 oyuncu', `${img(url('logo'))}`, 'Oyun 2 ile 6 kişiyle oynanır. Başlarken <b>yaşı en küçük oyuncu</b> ilk başlar. Aynı telefonda birden çok insan varsa sıra değişince <b>"Telefonu ver"</b> ekranı çıkar.')}
+      ${sec('🙈 Gizli el', `${img(url('yol-back'))}`, 'Kartların yalnız sana görünür. Başkalarının elinde <b>kaç kart</b> olduğunu görürsün ama hangi kartlar olduğunu görmezsin.')}
       ${sec('🧭 Hareket', `${img(url('yol-comert'))}${img(url('ilke-comert'))}`, 'Yol kartı hangi ilkeyse, piyonun <b>o ilkenin komşu karesine</b> gider (8 yön). Parlayan kareler gidebileceğin yerlerdir. Altın noktalar hedefe giden en kısa yoldur.')}
       ${sec('🪙 Rozetler', `${img(url('ahlak-comert'))}${img(url('ahlak-comert-neg'))}`, '<b>Olumlu ahlak kartı:</b> o ilkenin karelerine rozet konur, üstüne basan alır. <b>Olumsuz kart:</b> o ilkeden bir kare kapanır, 2 rozet ödersin.')}
-      ${sec('🚧 Kapalı yol & yol açma', `${[0, 1, 2, 3].map(() => img(url('yol-adaletli'), 'sm')).join('')}`, 'Kapalı kareye girilemez. Aynı ilkeden <b>4 kartı</b> verirsen (arkadaşlarla birlikte de olur) kare yeniden açılır ve ödül rozetleri paylaşılır.')}
-      ${sec('⇄ Takas', `<span class="ay-btn mock"><span class="ico">⇄</span>Takas</span>`, 'Sırası gelen oyuncu, bir rakiple <b>1\'e 1 kart</b> değiştirebilir.')}
+      ${sec('🚧 Kapalı yol & yol açma', `${[0, 1, 2, 3].map(() => img(url('yol-adaletli'), 'sm')).join('')}`, 'Kapalı kareye girilemez. Kapalı kareye dokun, aynı ilkeden <b>1–4 kartını</b> koy. 4\'e tamamlanmazsa sırayla diğer oyunculara sorulur: <b>ortak olmak isteyen</b> kart verir. Yol açılırsa herkes verdiği her kart için 1 rozet alır. Açılmazsa kimse kart kaybetmez.')}
+      ${sec('⇄ Takas', `<span class="ay-btn mock"><span class="ico">⇄</span>Takas</span>`, 'Sırası gelen oyuncu bir rakibe <b>"Sende ... var mı?"</b> diye teklif eder: verdiğin kartı, oyuncuyu ve istediğin kart türünü seç. Rakip <b>kabul eder ya da reddeder</b>. Reddedilen teklif aynı turda tekrarlanamaz.')}
+      ${sec('⏭ Pas', `<span class="ay-btn mock"><span class="ico">⏭</span>Pas</span>`, '<b>Pas</b> yalnız hiç hamle yapamıyorsan çıkar: elin atılır, 6 yeni kart çekersin ve sıra biter. Hamlen varsa pas geçemezsin.')}
       ${sec('✈ Kargo & Ahi Evran', `${img(url('yol-kargo'))}${img(url('yol-ahievran'))}`, '<b>Kargo uçağı:</b> turun başında, hiç ilerlemeden kullan; istediğin şehre uçarsın ve sıra biter. <b>Ahi Evran jokeri:</b> her ilkenin yerine geçer.')}
       <section><h3>🏆 Oyun sonu & puan</h3><p>Ahlak destesi biterse, ödül rozetleri tükenirse ya da ticaret destesi biterse oyun biter. <b>Kazanç = paran × rozet çarpanı.</b> En çok kazanan yenir.</p>
         <table class="hs-tab"><tr><th>${coin}Rozet</th>${MULT.map(m => `<td>${m[0]}</td>`).join('')}</tr><tr><th>Çarpan</th>${MULT.map(m => `<td><b>×${m[1]}</b></td>`).join('')}</tr></table></section>
