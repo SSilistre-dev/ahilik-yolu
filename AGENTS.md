@@ -100,3 +100,5 @@ Bunlar dışında sorma; port doluysa boş port seç ve söyle.
 ## Tekrar eden hatalar
 <!-- Ajan bir hatayı tekrarlayınca buraya: tarih — hata — doğrusu. En fazla 15 madde; eskiyen hook'a veya teste taşınır. -->
 - 2026-10-09 — Ana canvas'ın ebeveyni boyutsuzdu, sahne şerit olarak render edildi — canvas `#stage` (position:fixed; inset:0) içinde durur, scene ResizeObserver'ı ebeveyni ölçer.
+- 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı (test yanıltıcı) — her JS/CSS değişikliğinden sonra importmap `?v=` artırılır, sonra test edilir.
+- 2026-10-09 — Alt ajan commit'i git hook ile engelli; worktree ajanları değişikliği bırakır, ana oturum commit + merge eder.
