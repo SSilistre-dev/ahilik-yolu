@@ -4,12 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2b1d12">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
   <title>Ahilik Yolu – Ahlakın Yolu</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <style>
     #mute:not(.ay-round) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; z-index: 50; border: 0; border-radius: 50%; background: rgba(43,29,18,.75); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+    #rotate { display: none; position: fixed; inset: 0; z-index: 9999; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #2b1d12; color: #fff; font: 600 20px system-ui, sans-serif; text-align: center; }
+    #rotate b { font-size: 56px; }
+    @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
   </style>
   <!-- Bump v on every release: modules are mapped to versioned URLs so stale browser caches are bypassed. -->
   <script type="importmap">
@@ -17,14 +23,15 @@
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./src/main.js": "./src/main.js?v=5",
-      "./src/data.js": "./src/data.js?v=5",
-      "./src/game.js": "./src/game.js?v=5",
-      "./src/bot.js": "./src/bot.js?v=5",
-      "./src/scene.js": "./src/scene.js?v=5",
-      "./src/ui.js": "./src/ui.js?v=5",
-      "./src/sfx.js": "./src/sfx.js?v=5",
-      "./src/assets.js": "./src/assets.js?v=5"
+      "./src/main.js": "./src/main.js?v=6",
+      "./src/path.js": "./src/path.js?v=6",
+      "./src/data.js": "./src/data.js?v=6",
+      "./src/game.js": "./src/game.js?v=6",
+      "./src/bot.js": "./src/bot.js?v=6",
+      "./src/scene.js": "./src/scene.js?v=6",
+      "./src/ui.js": "./src/ui.js?v=6",
+      "./src/sfx.js": "./src/sfx.js?v=6",
+      "./src/assets.js": "./src/assets.js?v=6"
     }
   }
   </script>
@@ -33,6 +40,15 @@
   <div id="stage"><canvas id="board"></canvas></div>
   <div id="ui"></div>
   <button id="mute" type="button" aria-label="Sesi aç/kapat">🔊</button>
+  <div id="rotate" role="alert"><b>📱</b>Telefonu dik tut</div>
   <script type="module" src="./src/main.js"></script>
+  <script>
+    try {
+      const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+      if (standalone) screen.orientation?.lock?.('portrait').catch(() => {});
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    } catch {}
+  </script>
 </body>
 </html>
