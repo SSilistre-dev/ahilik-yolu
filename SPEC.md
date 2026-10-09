@@ -239,3 +239,68 @@ Hedef: 7 yaşındaki bir çocuk "nereye gideceğim, şimdi ne yapacağım" sorus
   - Titreşim, undo yığını ve bot hızlandırma (bot sırasında dokununca sıradaki aksiyon hemen gelir) glue'dadır.
   - PWA: manifest ve service worker. Başlangıç ekranı hemen gelir; yükleme çubuğu yalnız "Oyuna Başla"dan sonra, sahne hazır değilse görünür.
   - Yatay modda "Telefonu dik tut" uyarısı gösterilir.
+
+## v4: Kural kitabıyla birebir (2026-10-09)
+
+Kaynak: `Kural Kitabı - Talha temmuz25.pdf` (12 sayfa). Bu bölüm "Demo kararları" ile çelişirse v4 geçerlidir.
+Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesindeki numaralardır.
+
+### Kullanıcı kararları (2026-10-09)
+- Görev şehrine varıp ticareti tamamlayan oyuncunun o turki hareketi biter (`moveDone`). Kalan kartlarla devam edemez.
+- Ahi Evran jokeri kapalı yolu açarken 4 karttan biri yerine sayılır.
+- **AÇIK SORU (oyun yazarına sorulacak):** Kargo Uçağı ahlak kartından önce mi oynanır?
+  Kitapçık "sırasının başında, hiçbir hamle yapmamış olmalı" diyor; ahlak kartı açmak da 1. hamle sayılıyor.
+  Cevap gelene kadar mevcut davranış kalır: ahlak kartından sonra, piyon hareket etmeden.
+
+### Kurallar → davranış
+- **Oyuncu sayısı:** 2–6 (kitapçık: en iyi 4, 5–6 esnetilmiş kural). `PLAYER_COLORS` 6 renk.
+- **Başlayan:** yaşı en küçük oyuncu. `newGame({ players, seed, startIdx = 0 })`. UI başlangıçta sorar.
+- **Gizli eller (Kurulum 2. adım):** insan, başka oyuncuların elini görmez; yalnız kart sayısını görür.
+  Engine eli state'te tutar, gizlilik UI'nin işidir. `legalActions` başka oyuncunun elindeki kart id'lerini sızdırmaz.
+- **Aynı cihazda çok insan (aile oyunu):** `players[].bot=false` olan birden çok oyuncu olabilir.
+  Karar sırası bir insandan başka bir insana geçince UI "Telefonu X'e ver" perdesi gösterir; perde kalkmadan el görünmez.
+- **Tur başında el tamamlama (kural 26):** sıra bir oyuncuya geçtiğinde, ahlak kartından önce eli 6'ya tamamlanır.
+  `n>0` ise event `{type:'refill', pIdx, n}`. Tur sonunda da el 6'ya tamamlanır (3. hamle).
+- **Piyon ilerletme zorunlu:** `endTurn` yalnız `movesThisTurn>0 || moveDone` iken yasaldır.
+- **Pas (Pas Geçme Hamlesi):** yalnız `phase==='move'`, `movesThisTurn===0`, `!moveDone` ve yasal hiçbir `move`/`kargo` yokken yasaldır.
+  Elin tamamı ıskartaya gider, 6 yeni kart çekilir, sıra biter.
+- **Takas (kural 25, Kart Takası Hamlesi):** yalnız aktif oyuncu teklif eder. Karşı taraf kabul ya da ret eder.
+  Aktif oyuncu karşının elini görmez: istenen şey kart id'si değil, türdür (`want`: ilke id'si, `'ahievran'` veya `'kargo'`).
+  Aynı tur içinde aynı oyuncuya aynı `want` için reddedilmiş teklif tekrarlanamaz (`s.declined`).
+- **Kapalı yolu açma (kural 16–17):** aktif oyuncu kendi elinden 1–4 uygun kart koyar (o ilke ya da joker).
+  4'e ulaşmazsa diğer oyunculara koltuk sırasıyla (aktiften sonraki ilk oyuncudan başlayarak) sorulur. Her biri 0..eksik kadar kart verir.
+  Toplam 4 olunca yol açılır: 4 kart ve olumsuz ahlak kartı ıskartaya gider, herkes verdiği kart sayısı kadar ödül rozeti alır.
+  Herkese sorulduğu hâlde 4 olmazsa yol açılmaz, kimse kart kaybetmez (event `roadFailed`).
+- **Rozet (kural 29):** `p.badges` toplam puandır. UI bunu altın = `floor(b/5)`, gümüş = `b%5` olarak gösterir.
+- **Beraberlik:** önce rozet, sonra ticaret sayısı. Hepsi eşitse iki oyuncu da kazanır: `score` aynı `rank` verir.
+- Değişmeyen ve doğrulanmış: ahlak kartı (olumlu, olumsuz, kapalı kareye rozet konmaz, karedeki ilk gelen alır), komşu 8 yön, hareket sınırı yok,
+  piyonlar üst üste durabilir, zincirleme ticaret (kural 22), 3 bitiş koşulu ve turun ilk oyuncuya kadar tamamlanması, yazıyı okuma +1, ×2..×5.
+
+### Sözleşme değişiklikleri
+```js
+state += {
+  pending: null
+    | { kind:'trade', from, to, give /*cardId*/, want /*kind*/ }
+    | { kind:'road', tile, ilke, offers:[{ pIdx, cards:[cardId] }], ask /*pIdx sorulan*/, need /*eksik kart*/ },
+  declined: [{ to, want }],   // bu turda reddedilen teklifler; tur sonunda sıfırlanır
+}
+```
+- `export function actor(state) -> pIdx`: şu an karar vermesi gereken oyuncu.
+  `pending.trade` için `to`, `pending.road` için `ask`, aksi hâlde `active`.
+- `legalActions(state)` her zaman `actor`'ın aksiyonlarını döner. `pending` varken yalnız cevap aksiyonları döner.
+- Kaldırılan aksiyon: `{type:'trade',withPlayer,give,want}`. (`trade` event'i ticaret tamamlama olarak kalır.)
+- Yeni aksiyonlar:
+  - `{type:'offerTrade', withPlayer, give, want}`: aktif oyuncu; `move` fazı, `!moveDone`.
+  - `{type:'respondTrade', accept:true, card}` / `{type:'respondTrade', accept:false}`: `pending.to`.
+    `card`, `want` türünde olmalı. Kabulde event `swap`, retde event `tradeDeclined {pIdx:to, from, want}`.
+  - `{type:'openRoad', tile, cards:[cardId]}`: aktif oyuncu, 1–4 uygun kart.
+  - `{type:'contribute', cards:[cardId]}`: `pending.ask`; `[]` = katılmıyorum. Uygun ve en çok `need` kart.
+- Yeni event'ler: `refill {pIdx,n}`, `tradeOffer {from,to,give,want}`, `tradeDeclined`, `roadAsk {tile,ask,need}`, `roadFailed {tile}`.
+  `openRoad` event'inin `contrib` alanı `[{pIdx, cards}]` olarak kalır.
+- `botAction(state)`, `actor(state)` için karar verir:
+  - takas teklifine ve yol katkısına cevap verir;
+  - aktifken: yazıyı okur; ilerleyemiyorsa yolundaki eksik tür için takas teklif eder (verilen kart yoluna yaramayan kart olmalı);
+  - kapalı yolu en az 2 kartla açmaya girişir; hamle yoksa pas.
+  - Takas kabul: aldığı kart istediği kart kadar işine yarıyorsa ya da istenen kart yolunda gerekmiyorsa kabul eder.
+  - Yol katkısı: rozet kazandırdığı için, kendi bir sonraki adımına gereken kart hariç verir.
+- Glue: bot zamanlayıcısı `players[actor(state)].bot` ile karar verir. Undo yalnız `move` için ve yalnız `pending` yokken.
