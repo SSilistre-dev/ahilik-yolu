@@ -4,41 +4,66 @@ import { createScene } from './scene.js';
 import { createUI } from './ui.js';
 import { createSfx } from './sfx.js';
 
+import { goalTile, pathTo } from './path.js';
+import { CARDS } from './data.js';
+
 const BOT_DELAY = 700;
 const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
+const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
 let botTimer = 0;
+let lastBotAct = 0;
+let undoStack = [];
+let sceneReady = false;
+let prog = 0;
+let started = false;
 
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
 
+const buzz = p => { try { navigator.vibrate?.(p); } catch {} };
+
 const scene = createScene(document.getElementById('board'), {
   onTileTap: idx => ui.tapTile(idx),
-  onProgress: p => ui.setLoading?.(p),
+  onProgress: p => { prog = p; if (started && !sceneReady) ui.setLoading?.(p); },
 });
 const ui = createUI(document.getElementById('ui'), {
   onAction: a => act(a, false),
-  onTileHighlight: idxs => { highlight = idxs; if (state) scene.render(state, { highlight, focus: focusOf() }); },
+  onTileHighlight: idxs => { highlight = idxs; if (state) renderScene(); },
+  onLayout: ins => scene.setInsets?.(ins),
 });
-scene.ready?.then(() => ui.setLoading?.(1), () => ui.setLoading?.(1));
+const readyP = scene.ready ? Promise.resolve(scene.ready).catch(() => {}) : Promise.resolve();
+readyP.then(() => { sceneReady = true; });
 
-// Kamera odağı: yalnız insan oyuncunun hamle/kapatma aşamasında.
-function focusOf() {
-  // Close targets can be anywhere on the board, so zoom only while moving.
-  if (!state || state.phase !== 'move') return null;
+// Hedef/yol yalnız insan oyuncunun kendi sırasında gösterilir.
+function renderScene() {
   const p = state.players[state.active];
-  return p && !p.bot ? p.pos : null;
+  const show = !p.bot && ['ahlak', 'close', 'move'].includes(state.phase);
+  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [] });
 }
 
-function start(opts) {
+async function start(opts) {
   clearTimeout(botTimer);
+  started = true;
+  if (!sceneReady) {
+    ui.setLoading?.(prog);
+    await readyP;
+    ui.setLoading?.(1);
+  }
+  undoStack = [];
   state = newGame({ ...opts, seed: (Math.random() * 2 ** 32) >>> 0 });
   update([]);
 }
 
 function act(action, isBot) {
   if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return ui.showStart(start); }
+  if (action.type === 'undo') {
+    if (isBot || !undoStack.length) return;
+    sfx.play('click'); buzz(10);
+    state = undoStack.pop();
+    return update([]);
+  }
   let res;
   try {
     res = apply(state, action);
@@ -47,11 +72,16 @@ function act(action, isBot) {
     return;
   }
   if (!isBot) sfx.play('click');
+  if (isBot) lastBotAct = Date.now();
+  if (isBot || action.type !== 'move') undoStack = [];
+  else if (res.events.some(e => e.type === 'trade')) undoStack = [];
+  else undoStack.push(state);
   state = res.state;
   update(res.events);
 }
 
 const SOUND = { move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
+const BUZZ = { move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
 
 function effects(events) {
   let coin = false;
@@ -62,25 +92,42 @@ function effects(events) {
         if (pt) ui.flyCoins?.(pt, ev.pIdx, ev.n);
         coin = true;
       } else if (SOUND[ev.type]) sfx.play(SOUND[ev.type]);
+      if (state.players[ev.pIdx ?? state.active]?.bot) continue;
+      if (ev.type === 'ahlak' && CARDS[ev.card]?.negative) buzz([40, 60, 40]);
+      else if (BUZZ[ev.type]) buzz(BUZZ[ev.type]);
     } catch (e) { console.error(e); }
   }
   if (coin) sfx.play('coin');
 }
 
+const botNext = () => act(botAction(state), true);
+
 function update(events) {
   clearTimeout(botTimer);
+  botTimer = 0;
   const legal = legalActions(state);
+  const p = state.players[state.active];
+  if (undoStack.length && state.phase === 'move' && !p.bot) legal.push({ type: 'undo' });
   if (state.phase === 'over') state.__score = score(state);
   highlight = [];
   ui.render(state, legal, events);
-  scene.render(state, { highlight, focus: focusOf() });
+  renderScene();
   effects(events);
-  const p = state.players[state.active];
   if (state.phase !== 'over' && p.bot) {
     const d = events.some(e => e.type === 'ahlak') ? BOT_DELAY_AHLAK : BOT_DELAY;
-    botTimer = setTimeout(() => act(botAction(state), true), d);
+    botTimer = setTimeout(botNext, d);
   }
 }
+
+// Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
+addEventListener('pointerdown', () => {
+  if (!botTimer || !state || !state.players[state.active].bot) return;
+  clearTimeout(botTimer);
+  botTimer = setTimeout(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
+}, true);
+
+// Kart seçimi titreşimi.
+document.getElementById('ui').addEventListener('click', e => { if (e.target.closest('.ay-card')) buzz(10); });
 
 // Ses aç/kapa düğmesi (index.html'de #mute).
 const mute = document.getElementById('mute');
