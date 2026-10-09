@@ -6,3 +6,4 @@ playwright-report/
 .claude/worktrees/
 .claude/settings.local.json
 .wt/
+assets-src/
