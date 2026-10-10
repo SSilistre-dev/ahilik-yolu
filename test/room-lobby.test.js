@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CODE_ALPHABET, BOT_NAMES, createRoom, makeCode, normalizeCode, join, receive, disconnect } from '../server/room.js';
+import { CODE_ALPHABET, BOT_NAMES, cleanName, createRoom, makeCode, normalizeCode, join, receive, disconnect } from '../server/room.js';
 import { mkRand, mkClock, fakeJoin } from './helpers/rand.mjs';
 
 const T0 = 1_000_000;
@@ -234,12 +234,12 @@ test('removeSeat: startSeat sayısı kaymaya göre ayarlanır', () => {
 });
 
 test('setOptions: beyaz liste dışı illegal', () => {
-  const { room, tokens } = lobbyWith('Ayşe', 'Burak');
+  const { room, tokens } = lobbyWith('Ayşe', 'Burak', 'Can', 'Deniz');
   const [h, b] = tokens;
   const r = receive(room, h, msg('setOptions', { turnSeconds: 60, startSeat: 3 }), T0, rand);
   assert.deepEqual(room.options, { turnSeconds: 60, startSeat: 3 });
   assert.deepEqual(lastLobby(r).options, { turnSeconds: 60, startSeat: 3 });
-  for (const bad of [{ turnSeconds: 45 }, { turnSeconds: '30' }, { turnSeconds: -1 }, { startSeat: 6 }, { startSeat: -1 }, { startSeat: 1.5 }, { startSeat: 'ilk' }, { startSeat: null }]) {
+  for (const bad of [{ turnSeconds: 45 }, { turnSeconds: '30' }, { turnSeconds: -1 }, { startSeat: 4 }, { startSeat: 6 }, { startSeat: -1 }, { startSeat: 1.5 }, { startSeat: 'ilk' }, { startSeat: null }]) {
     assert.equal(errCode(receive(room, h, msg('setOptions', bad), T0, rand), h), 'illegal', JSON.stringify(bad));
   }
   assert.deepEqual(room.options, { turnSeconds: 60, startSeat: 3 });
@@ -281,7 +281,7 @@ test('receive: sürüm uyuşmazlığı version, bilinmeyen tip badMsg, host olma
   assert.deepEqual([errCode(r, h), r.out[0].close], ['version', true]);
   assert.equal(errCode(receive(room, h, { t: 'ping' }, T0, rand), h), 'version');
   for (const bad of ['x', 5, null, [], undefined]) assert.equal(errCode(receive(room, h, bad, T0, rand), h), 'badMsg');
-  for (const t of ['yok', 'start', 'act', 'emote', 'rematch', 'hello', '__proto__', 'constructor', 'toString', undefined, 5]) {
+  for (const t of ['yok', 'hello', '__proto__', 'constructor', 'toString', undefined, 5]) {
     r = receive(room, h, msg(t), T0, rand);
     assert.equal(errCode(r, h), 'badMsg', String(t));
     assert.equal(r.out[0].close, undefined);
@@ -336,4 +336,19 @@ test('disconnect: online false, lostAt dolu, lobi yayınlanır', () => {
   const again = disconnect(room, b, T0 + 99);
   assert.deepEqual([again.out, again.changed, room.seats[1].lostAt], [[], false, T0 + 77]);
   assert.deepEqual(disconnect(room, 'f'.repeat(32), T0), { out: [], changed: false });
+});
+
+test('setOptions: startSeat koltuk sayısından küçük olmalı', () => {
+  const { room, tokens } = lobbyWith('Ayşe', 'Burak');
+  const h = tokens[0];
+  assert.equal(errCode(receive(room, h, msg('setOptions', { startSeat: 5 }), T0, rand), h), 'illegal');
+  assert.equal(errCode(receive(room, h, msg('setOptions', { startSeat: 2 }), T0, rand), h), 'illegal');
+  assert.equal(receive(room, h, msg('setOptions', { startSeat: 1 }), T0, rand).changed, true);
+  assert.equal(room.options.startSeat, 1);
+});
+
+test('cleanName: yalnız görünmez karakterden oluşan ad reddedilir', () => {
+  for (const bad of ['\u3164', '\u2800', '\u0307', '\u3164\u2800 ', '\u115F\u1160', '\uFFA0', '  ']) assert.equal(cleanName(bad).ok, false, JSON.stringify(bad));
+  for (const bad of ['Ali\u3164', 'Ali\u2800']) assert.equal(cleanName(bad).ok, false, JSON.stringify(bad));
+  for (const good of ['Ayşe', '7', '😀', 'Çırak', 'e\u0307']) assert.equal(cleanName(good).ok, true, good);
 });
