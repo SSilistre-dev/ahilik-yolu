@@ -7,7 +7,7 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 ## Proje
 - Amaç: İGİAD'ın "Ahilik Yolu" kutu oyununun mobil + masaüstü tarayıcıda oynanan Three.js demosu (1 insan + botlar).
 - Stack: build'siz statik ES modules, three.js 0.160.0 importmap (jsDelivr), testler `node:test`. npm/paket yok.
-- Canlı: TODO: henüz yok (GitHub Pages adayı) · repo: github.com/SSilistre-dev/ahilik-yolu
+- Canlı: https://ssilistre-dev.github.io/ahilik-yolu/ (GitHub Pages; `main`'e push = deploy) · repo: github.com/SSilistre-dev/ahilik-yolu
 - Bu projeye YABANCI, önerme: bundler (Vite/webpack), npm bağımlılığı, framework (React vb.), OrbitControls.
 - Kurallar ve dondurulmuş sözleşme: `SPEC.md`. Sözleşmeyi değiştiren iş önce SPEC'i günceller. Mimari: `docs/ARCHITECTURE.md`.
 - Künye: proje **ssilistre.dev** tarafından geliştirilir (README, oyun içi Hakkında, `<meta name="author">`).
@@ -20,6 +20,7 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 - Tek test: `node --test --test-name-pattern "<ad>" test/`
 - UI kontrolü: headless Brave + CDP ile ekran görüntüsü (`--headless=new --remote-debugging-port=<port> --use-angle=swiftshader --enable-unsafe-swiftshader`); `--screenshot` bayrağı takılıyor, CDP `Page.captureScreenshot` kullan. Görüntüler bakılınca silinir.
 - Sürüm çıkarken `index.html` importmap'teki `?v=` değerini artır (tarayıcı önbelleği).
+- Kural kitabı: `Kural Kitabı - Talha temmuz25.pdf` repo kökünde yerelde durur, `.gitignore`'dadır (repoda yok). Metin için `swift` + PDFKit (`PDFDocument(url:).page(at:)?.string`); `pdftotext` yok. Kural atıflarında PDF sayfa numarası kullanılır (2026-10-10, denetim: TASKS.md'deki sayfa/madde atıfları bu yolla doğrulandı).
 
 ## Roller
 Bu oturumda alt ajan olarak bir görev metniyle çağrıldıysan "Alt ajan" bölümü bağlayıcıdır.
