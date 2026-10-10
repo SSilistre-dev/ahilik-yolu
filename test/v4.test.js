@@ -31,9 +31,10 @@ const yolCards = (s) => [...s.players.flatMap((p) => p.hand), ...s.decks.yol, ..
 test('openRoad solo: 4 cards (incl. joker) open it at once, 1 card = 1 badge', () => {
   const s = closeComert(moveState({ hand: ['yol-comert-1', 'yol-ahievran-0', 'yol-comert-2', 'yol-comert-3', 'yol-adaletli-0'] }));
   const roads = legalActions(s).filter((a) => a.type === 'openRoad');
-  assert.deepEqual(roads.map((a) => a.cards.length), [1, 2, 3, 4]);
-  assert.deepEqual(roads[3].cards, ['yol-comert-1', 'yol-comert-2', 'yol-comert-3', 'yol-ahievran-0']); // ilke first, joker last
-  const { state: r, events } = apply(s, roads[3]);
+  assert.deepEqual(roads.map((a) => a.cards.length), [0, 1, 1, 2, 2, 3, 3, 4]); // v6: 0-card call + every kind combination
+  const four = roads[7];
+  assert.deepEqual(four.cards, ['yol-comert-1', 'yol-comert-2', 'yol-comert-3', 'yol-ahievran-0']); // ilke first, joker last
+  const { state: r, events } = apply(s, four);
   assert.equal(r.pending, null);
   assert.ok(!r.tiles[16].closed && r.tiles[16].closedBy === null);
   assert.equal(r.players[0].badges, 4);
@@ -44,17 +45,16 @@ test('openRoad solo: 4 cards (incl. joker) open it at once, 1 card = 1 badge', (
   assert.ok(events.find((e) => e.type === 'openRoad').text);
 });
 
-test('openRoad: jokers count; foreign, duplicate, empty and >4 cards rejected', () => {
+test('openRoad: jokers count; foreign, duplicate and >4 cards rejected', () => {
   const s = closeComert(moveState({ hand: ['yol-ahievran-0', 'yol-ahievran-1', 'yol-comert-1', 'yol-comert-2', 'yol-comert-3', 'yol-adaletli-0'] }));
   const road = (cards) => ({ type: 'openRoad', tile: 16, cards });
   assert.doesNotThrow(() => apply(s, road(['yol-ahievran-0', 'yol-ahievran-1'])));
   assert.throws(() => apply(s, road(['yol-adaletli-0'])));
   assert.throws(() => apply(s, road(['yol-comert-1', 'yol-comert-1'])));
-  assert.throws(() => apply(s, road([])));
   assert.throws(() => apply(s, road(['yol-comert-1', 'yol-comert-2', 'yol-comert-3', 'yol-ahievran-0', 'yol-ahievran-1'])));
   assert.throws(() => apply(s, { type: 'openRoad', tile: 7, cards: ['yol-comert-1'] })); // tile not closed
   const none = closeComert(moveState({ hand: ['yol-adaletli-0'] }));
-  assert.ok(!types(none).includes('openRoad'));
+  assert.deepEqual(legalActions(none).filter((a) => a.type === 'openRoad'), [{ type: 'openRoad', tile: 16, cards: [] }]); // v6: only the 0-card call
 });
 
 test('shared road: others asked in seat order, awards 2/2, cards leave only on success', () => {
@@ -69,7 +69,7 @@ test('shared road: others asked in seat order, awards 2/2, cards leave only on s
   assert.deepEqual(legalActions(a.state), [{ type: 'contribute', cards: [] }]); // player 1 has no matching card
   const b = apply(a.state, { type: 'contribute', cards: [] }).state;
   assert.equal(actor(b), 2);
-  assert.deepEqual(legalActions(b).map((x) => x.cards.length), [0, 1, 2]);
+  assert.deepEqual(legalActions(b).map((x) => x.cards.length), [0, 1, 1, 2, 2]);
   assert.throws(() => apply(b, { type: 'contribute', cards: ['yol-comert-1'] })); // not own card
   assert.throws(() => apply(b, { type: 'contribute', cards: ['yol-comert-3', 'yol-comert-4', 'yol-ahievran-0'] })); // more than need
   assert.throws(() => apply(b, { type: 'endTurn' })); // only answers while pending

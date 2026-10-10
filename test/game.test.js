@@ -116,10 +116,10 @@ test('move legal actions are deduped by ilke / joker', () => {
   assert.equal(m.length, 1 + 3); // merhametli->1, joker->1,5,6 ... see below
 });
 
-test('reaching goal neighbor completes trade, pawn to city, new task, only endTurn legal', () => {
+test('enterCity completes trade, pawn to city, new task, only endTurn legal', () => {
   const s = moveState({ pos: 17, hand: ['yol-durust-1', 'yol-durust-2'] });
   s.decks.ticaret.push('ticaret-ankara-0');
-  const r = apply(s, { type: 'move', card: 'yol-durust-1', tile: 18 }).state;
+  const r = apply(apply(s, { type: 'move', card: 'yol-durust-1', tile: 18 }).state, { type: 'enterCity' }).state;
   assert.deepEqual(r.players[0].trades, ['ticaret-kayseri-0']);
   assert.equal(r.players[0].pos, 24);
   assert.equal(r.players[0].task, 'ticaret-ankara-0');
@@ -128,26 +128,26 @@ test('reaching goal neighbor completes trade, pawn to city, new task, only endTu
   assert.throws(() => apply(r, { type: 'move', card: 'yol-durust-2', tile: 18 }));
   // reading text still possible after trade
   const t = moveState({ pos: 17, hand: ['yol-durust-0'] });
-  const rt = apply(t, { type: 'move', card: 'yol-durust-0', tile: 18 }).state;
+  const rt = apply(apply(t, { type: 'move', card: 'yol-durust-0', tile: 18 }).state, { type: 'enterCity' }).state;
   assert.deepEqual(types(rt), ['readText', 'endTurn']);
 });
 
 test('new task in the same city completes immediately and redraws', () => {
   const s = moveState({ pos: 17, hand: ['yol-durust-1'] });
   s.decks.ticaret.push('ticaret-konya-0', 'ticaret-kayseri-1');
-  const r = apply(s, { type: 'move', card: 'yol-durust-1', tile: 18 }).state;
+  const r = apply(apply(s, { type: 'move', card: 'yol-durust-1', tile: 18 }).state, { type: 'enterCity' }).state;
   assert.deepEqual(r.players[0].trades, ['ticaret-kayseri-0', 'ticaret-kayseri-1']);
   assert.equal(r.players[0].task, 'ticaret-konya-0');
   // empty deck guard
   const e = moveState({ pos: 17, hand: ['yol-durust-1'] });
   e.decks.ticaret = ['ticaret-kayseri-1'];
-  const re = apply(e, { type: 'move', card: 'yol-durust-1', tile: 18 }).state;
+  const re = apply(apply(e, { type: 'move', card: 'yol-durust-1', tile: 18 }).state, { type: 'enterCity' }).state;
   assert.equal(re.players[0].task, null);
   assert.equal(re.players[0].trades.length, 2);
   assert.ok(re.endgame);
 });
 
-test('readText: only after hasText card; +1 badge; other actions clear it', () => {
+test('readText: only after hasText card; +1 badge; endTurn clears it', () => {
   const s = moveState({ pos: 0, hand: ['yol-merhametli-0', 'yol-merhametli-1'] });
   assert.ok(!types(s).includes('readText'));
   assert.throws(() => apply(s, { type: 'readText' }));
@@ -232,7 +232,7 @@ test('end conditions finish the round to startIdx', () => {
   // ticaret deck last card
   const t = moveState({ pos: 17, hand: ['yol-durust-1'] });
   t.decks.ticaret = ['ticaret-ankara-0'];
-  assert.ok(apply(t, { type: 'move', card: 'yol-durust-1', tile: 18 }).state.endgame);
+  assert.ok(apply(apply(t, { type: 'move', card: 'yol-durust-1', tile: 18 }).state, { type: 'enterCity' }).state.endgame);
   // endgame triggered with startIdx last in line: B ends -> over
   const e = moveState(); e.endgame = true; e.active = 1; e.movesThisTurn = 1;
   assert.equal(apply(e, { type: 'endTurn' }).state.phase, 'over');

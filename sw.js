@@ -1,5 +1,5 @@
 // Bump V together with ?v= in index.html.
-const V = 14;
+const V = 15;
 const CACHE = `ahilik-v${V}`;
 const PRECACHE = [
   './', './index.html', `./style.css?v=${V}`, './manifest.webmanifest',

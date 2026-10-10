@@ -45,7 +45,7 @@ const cardHtml = (id, extra = '', attrs = '', style = '') =>
 const SLIDES = [
   { t: '1 · Ahlak kartı aç', imgs: ['ahlak-back', 'ahlak-adaletli'], p: 'Her tur başında bir ahlak kartı çekersin. Olumluysa o ilkenin karelerine rozet konur, olumsuzsa bir kare kapanır.' },
   { t: '2 · Yol kartıyla ilerle', imgs: ['yol-comert', 'yol-ahievran', 'yol-kargo'], p: 'Kartın ilkesiyle eşleşen komşu kareye git. Ahi Evran joker, Kargo seni istediğin şehre uçurur.' },
-  { t: '3 · Şehre ulaş, rozet topla', imgs: ['city-ankara', 'ticaret-ankara-2'], p: 'Görev şehrine komşu kareye varınca ticareti tamamlarsın. Kazanç = para × rozet çarpanı.' },
+  { t: '3 · Şehre ulaş, rozet topla', imgs: ['city-ankara', 'ticaret-ankara-2'], p: 'Görev şehrine komşu kareye varınca Şehre Gir\'e dokun ya da yolu uzatıp rozet topla; tur bitince ticaret kendiliğinden tamamlanır. Kazanç = para × rozet çarpanı.' },
 ];
 
 // onLayout({top, bottom, right}) — all CSS px, measured against the viewport:
@@ -66,13 +66,13 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     handleEl = $('.ay-handle'), subEl = $('.ay-sub'), actsEl = $('.ay-acts'), fanEl = $('.ay-fan'),
     modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx');
 
-  let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null;
+  let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null, rpick = [], rkey = '';
   let wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, startEl = null, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
 
   const tut = createTutorial(root, { art: cardArt, url });
   const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected, blocked: () => !!st && (needCurtain() || !!st.pending || !!sheet) };
-  const act = a => { if (a.type === 'move' || a.type === 'kargo') wiggled = true; passAsk = false; sheet = null; trade = {}; selected = null; onAction(a); };
+  const act = a => { if (a.type === 'move' || a.type === 'kargo') wiggled = true; passAsk = false; sheet = null; trade = {}; selected = null; rpick = []; rkey = ''; onAction(a); };
   const has = t => legal.some(a => a.type === t);
   const actorIdx = () => actorOf(st);
   const humans = () => st.players.filter(p => !p.bot).length;
@@ -109,10 +109,12 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     if (p.bot) return `${p.name} oynuyor… (dokun: hızlandır)`;
     if (!human()) return `Sıra ${p.name} oyuncusunda`;
     if (has('readText') && p.pendingText) return 'Kartı sesli oku, +1 rozet';
+    if (st.phase === 'ahlak' && has('kargo')) return selected ? 'Uçmak istediğin şehri seç (ahlak kartı açılmaz)' : 'Ahlak kartı aç ya da Kargo kartıyla şehre uç';
     if (st.phase !== 'move') return PHASE[st.phase] ?? st.phase;
     if (sheet?.kind === 'trade') return 'Takas: verdiğin kartı, oyuncuyu ve istediğini seç';
-    if (sheet?.kind === 'road') return 'Kapalı yol: kaç kart koyacaksın?';
+    if (sheet?.kind === 'road') return 'Kapalı yol: vereceğin kartlara dokun';
     if (selected) return CARDS[selected]?.kargo ? 'Uçmak istediğin şehri seç' : 'Parlayan kareye dokun';
+    if (has('enterCity')) return legal.some(a => a.type === 'move' || a.type === 'kargo') ? 'Şehre komşusun! Şehre gir ya da yolu uzatıp rozet topla' : 'Şehre gir, ticareti tamamla';
     if (legal.some(a => a.type === 'move' || a.type === 'kargo')) return 'Bir yol kartı seç ya da parlayan kareye dokun';
     return has('endTurn') ? 'Hamle kalmadı → Turu Bitir' : has('pass') ? 'Hareket edecek kartın yok: takas dene ya da Pas de' : PHASE.move;
   }
@@ -154,8 +156,12 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     if (mine) {
       if (has('undo')) btn.push('<button class="ay-btn sm" data-a="undo" aria-label="Geri Al"><span class="ico">↶</span>Geri Al</button>');
       if (has('drawAhlak')) btn.push(`<button class="ay-btn primary big pulse" data-a="draw">${img(url('ahlak-back'), 'ico', true)}<span>Ahlak Kartı Aç</span></button>`);
+      if (has('enterCity')) {
+        const t = CARDS[st.players[st.active].task];
+        btn.push(`<button class="ay-btn primary big pulse" data-a="city"><span class="ico">⚑</span><span>Şehre Gir · ${esc(cityName(t.city))} ${t.value}M</span></button>`);
+      }
       if (has('endTurn')) {
-        const moves = legal.some(a => a.type === 'move' || a.type === 'kargo');
+        const moves = legal.some(a => a.type === 'move' || a.type === 'kargo' || a.type === 'enterCity');
         btn.push(`<button class="ay-btn big ${moves ? '' : 'primary pulse'}" data-a="end"><span class="ico">➜</span><span>Turu Bitir</span></button>`);
       }
       if (has('offerTrade')) btn.push(`<button class="ay-btn ${sheet?.kind === 'trade' ? 'sel' : ''}" data-a="trade"><span class="ico">⇄</span>Takas</button>`);
@@ -188,7 +194,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     fanEl.style.setProperty('--n', n);
     fanEl.style.setProperty('--step', n > 6 ? .6 : .74); // 7+ cards: overlap more so the fan fits 360px
     const wig = mine && !wiggled && st.phase === 'move';
-    fanEl.innerHTML = hand.map((id, i) => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && st.phase === 'move' && !moveOk.has(kind(id)) ? 'dim' : ''} ${wig && moveOk.has(kind(id)) ? 'wig' : ''}`,
+    fanEl.innerHTML = hand.map((id, i) => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && (st.phase === 'move' || st.phase === 'ahlak') && !moveOk.has(kind(id)) ? 'dim' : ''} ${wig && moveOk.has(kind(id)) ? 'wig' : ''}`,
       `data-card="${id}"`, `--i:${i};--r:${((i - mid) * (n > 6 ? 3 : 4.2)).toFixed(1)}deg;--y:${(((i - mid) ** 2) * (n > 6 ? .8 : 1.7)).toFixed(1)}px`)).join('');
   }
 
@@ -207,6 +213,8 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   }
 
   // ---------- Takas / yol açma sayfası (aktif insan) ----------
+  // Kart seçici (yol açma / katkı): kartın kendisine dokunulur; seçim `rpick` içinde id olarak tutulur, gönderirken türe çevrilir.
+  const pickerHtml = (ids, max) => `<div class="ay-rpicks">${ids.map(id => `<button class="ay-rcard ${rpick.includes(id) ? 'sel' : ''}" data-a="rpick" data-id="${id}" data-max="${max}" aria-pressed="${rpick.includes(id)}" aria-label="${esc(cardName(id))}${CARDS[id].hasText ? ' (yazılı)' : ''}">${img(cardArt(id), '', true)}${CARDS[id].hasText ? '<span class="ay-scroll">📜</span>' : ''}</button>`).join('')}</div>`;
   const thumbs = cards => cards.map(id => img(cardArt(id), 'ay-th', true)).join('');
   function tradeSheet() {
     const ts = legal.filter(a => a.type === 'offerTrade'), hand = st.players[st.active].hand;
@@ -232,11 +240,16 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     if (sheet.tile == null && tiles.length === 1) sheet.tile = tiles[0];
     if (sheet.tile == null) return `<div class="ay-sheet ay-p ay-compose"><div class="ay-sheethead"><b>🚧 Hangi yolu açacaksın?</b><button class="ay-btn sm" data-a="sheet-x">Kapat</button></div>
       <div class="ay-row">${tiles.map(t => `<button class="ay-btn" data-a="road-tile" data-v="${t}" style="border-color:${ILKELER[st.tiles[t].ilke]?.color}">${esc(ILKELER[st.tiles[t].ilke]?.name ?? 'Kare')}</button>`).join('')}</div></div>`;
-    const vs = uniqBy(rs.filter(a => a.tile === sheet.tile), a => sig(a.cards)).sort((x, y) => x.cards.length - y.cards.length);
-    const il = ILKELER[st.tiles[sheet.tile]?.ilke];
+    const il = ILKELER[st.tiles[sheet.tile]?.ilke], key = `sheet:${sheet.tile}`;
+    if (rkey !== key) { rkey = key; rpick = []; }
+    const hand = st.players[st.active].hand.filter(id => CARDS[id].joker || CARDS[id].ilke === st.tiles[sheet.tile]?.ilke);
+    const go = rs.find(a => a.tile === sheet.tile && sig(a.cards) === sig(rpick)), n = rpick.length;
     return `<div class="ay-sheet ay-p ay-compose"><div class="ay-sheethead"><b>🚧 ${esc(il?.name ?? '')} yolunu aç</b><button class="ay-btn sm" data-a="sheet-x">Kapat</button></div>
-      <p class="ay-ask">Yolu açmak için <b>4 kart</b> gerekir. Kaç kartını koyacaksın? Eksik kalırsa arkadaşların tamamlayabilir. Her kart = 1 rozet.</p>
-      <div class="ay-opts">${vs.map(a => `<button class="ay-opt" data-a="road-go" data-i="${legal.indexOf(a)}"><b>${a.cards.length} kart</b><span class="ths">${thumbs(a.cards)}</span></button>`).join('')}</div></div>`;
+      <div class="ay-sbody"><p class="ay-ask">Yolu açmak için <b>4 kart</b> gerekir. Vereceğin kartlara dokun (en çok 4); eksik kalırsa arkadaşların tamamlar. Her kart = 1 rozet.</p>
+      ${pickerHtml(hand, 4)}
+      <p class="ay-ask">${n ? `Seçtiğin: ${n}/4 kart · +${n} rozet${n < 4 ? ` · Eksik ${4 - n} kartı arkadaşların tamamlar` : ''}` : 'Kartın yoksa arkadaşlarından 4 kart istenir; kartsız başlatırsan rozet almazsın.'}</p>
+      <p class="ay-ask dim">Parşömen işaretli kartı hamlede kullanırsan yazıyı okuyup +1 rozet alırsın.</p></div>
+      <button class="ay-btn primary big" data-a="road-go" data-i="${go ? legal.indexOf(go) : -1}" ${go ? '' : 'disabled'}>${n ? `Yolu Aç (${n} kart)` : 'Kartım yok, arkadaşlarıma soracağım'}</button></div>`;
   }
   function renderSheet() {
     if (sheet && !(human() && st.phase === 'move' && has(sheet.kind === 'trade' ? 'offerTrade' : 'openRoad'))) sheet = null;
@@ -260,16 +273,20 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
         <figure><span class="wnt" style="--c:${wantColor(pd.want)}">${img(wantArt(pd.want), '', true)}</span><figcaption>İstenen: ${esc(wantName(pd.want))}</figcaption></figure></div>
       ${btns}<button class="ay-btn danger" data-a="resp" data-i="${no}">Reddet</button></div>`;
   }
-  // Ortak yol açma: kaç kart katılacak?
+  // Ortak yol açma: hangi kartlarla katılacak?
   function roadAskHtml() {
-    const pd = st.pending, act = st.players[st.active], il = ILKELER[pd.ilke];
-    const cs = uniqBy(legal.filter(a => a.type === 'contribute'), a => sig(a.cards)).sort((x, y) => x.cards.length - y.cards.length);
-    const have = 4 - pd.need;
+    const pd = st.pending, act = st.players[st.active], il = ILKELER[pd.ilke], key = `ask:${pd.tile}:${pd.ask}:${pd.need}`;
+    if (rkey !== key) { rkey = key; rpick = []; }
+    const hand = st.players[pd.ask].hand.filter(id => CARDS[id].joker || CARDS[id].ilke === pd.ilke);
+    const have = 4 - pd.need, n = rpick.length;
+    const go = legal.find(a => a.type === 'contribute' && sig(a.cards) === sig(rpick)), no = legal.findIndex(a => a.type === 'contribute' && !a.cards.length);
     return `<div class="ay-dialog ay-p ask" style="--pc:${act.color}"><h2>🚧 Ortak yol</h2>
       <p class="ay-line"><b>${esc(act.name)}</b> <b style="color:${il?.color}">${esc(il?.name ?? '')}</b> yolunu açıyor, <b>${pd.need} kart eksik</b>. Ortak olmak ister misin? Her kart = 1 rozet.</p>
       <div class="ay-slots">${[0, 1, 2, 3].map(i => `<i class="${i < have ? 'on' : ''}"></i>`).join('')}</div>
-      <div class="ay-opts">${cs.map(a => `<button class="ay-opt ${a.cards.length ? '' : 'no'}" data-a="resp" data-i="${legal.indexOf(a)}">${a.cards.length
-        ? `<b>${a.cards.length} kart · +${a.cards.length} ${coin}</b><span class="ths">${thumbs(a.cards)}</span>` : '<b>Katılmıyorum</b>'}</button>`).join('')}</div></div>`;
+      ${hand.length ? `<p class="ay-ask">Vereceğin kartlara dokun (en çok ${pd.need}).</p>${pickerHtml(hand, pd.need)}
+        <p class="ay-ask">${n ? `Seçtiğin: ${n}/${pd.need} kart · +${n} rozet` : 'Henüz kart seçmedin.'}</p>` : '<p class="ay-ask">Elinde bu yola uygun kart yok.</p>'}
+      ${hand.length ? `<button class="ay-btn primary big" data-a="resp" data-i="${go ? legal.indexOf(go) : -1}" ${n && go ? '' : 'disabled'}>Katkı Ver (${n} kart · +${n} ${coin})</button>` : ''}
+      <button class="ay-btn big" data-a="resp" data-i="${no}">Katılmıyorum</button></div>`;
   }
 
   function renderModal() {
@@ -402,7 +419,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     const t = e.target.closest('[data-a],[data-card]');
     if (!t || !st) return;
     if (t.dataset.card) {
-      if (!human()) return;
+      if (!human() || (st.phase === 'ahlak' && !CARDS[t.dataset.card]?.kargo)) return; // before the ahlak card only kargo is playable (AHI-005)
       selected = selected === t.dataset.card ? null : t.dataset.card;
       passAsk = false;
       fanEl.querySelectorAll('.ay-card').forEach(b => b.classList.toggle('sel', b.dataset.card === selected));
@@ -414,6 +431,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     if (a === 'draw') act({ type: 'drawAhlak' });
     else if (a === 'undo') act({ type: 'undo' });
     else if (a === 'end') act({ type: 'endTurn' });
+    else if (a === 'city') act({ type: 'enterCity' });
     else if (a === 'read') act({ type: 'readText' });
     else if (a === 'new') act({ type: 'newGame' });
     else if (a === 'pass') { passAsk = true; redo(); }
@@ -421,9 +439,16 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     else if (a === 'pass-yes') act({ type: 'pass' });
     else if (a === 'kargo') act({ type: 'kargo', card: selected, city: t.dataset.city });
     else if (a === 'trade') { sheet = sheet?.kind === 'trade' ? null : { kind: 'trade' }; trade = {}; selected = null; renderAll(); }
-    else if (a === 'road') { sheet = sheet?.kind === 'road' ? null : { kind: 'road', tile: null }; selected = null; renderAll(); }
-    else if (a === 'sheet-x') { sheet = null; renderAll(); }
+    else if (a === 'road') { sheet = sheet?.kind === 'road' ? null : { kind: 'road', tile: null }; selected = null; rkey = ''; renderAll(); }
+    else if (a === 'sheet-x') { sheet = null; rkey = ''; renderAll(); }
     else if (a === 'road-tile') { sheet.tile = +t.dataset.v; renderAll(); }
+    else if (a === 'rpick') {
+      const id = t.dataset.id, max = +t.dataset.max;
+      if (rpick.includes(id)) rpick = rpick.filter(x => x !== id);
+      else if (rpick.length >= max) toast(`En çok ${max} kart`);
+      else rpick = [...rpick, id];
+      renderAll();
+    }
     else if (a === 'road-go') act(legal[+t.dataset.i]);
     else if (a === 'resp') act(legal[+t.dataset.i]);
     else if (a === 'ready') { viewer = actorIdx(); renderAll(); tut.update(st, legal, [], tutEls); }
@@ -441,7 +466,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     }
   });
   drawerEl.addEventListener('click', e => { if (e.target === drawerEl) drawerEl.hidden = true; });
-  sheetEl.addEventListener('click', e => { if (e.target === sheetEl) { sheet = null; renderAll(); } });
+  sheetEl.addEventListener('click', e => { if (e.target === sheetEl) { sheet = null; rkey = ''; renderAll(); } });
 
   function renderAll() {
     renderSheet(); renderHud(); renderHand(); renderActs(); renderSub(); renderModal(); renderCurtain(); highlight();
@@ -453,6 +478,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   function evText(ev) {
     const human_ = i => !st.players[i]?.bot;
     if (ev.type === 'badgePlaced') return null;
+    if (ev.type === 'nearCity') return human_(ev.pIdx) ? 'Şehre komşusun! Şehre girebilirsin.' : null;
     if (ev.type === 'refill') return human_(ev.pIdx) && ev.n > 0 ? (humans() > 1 ? `${nm(ev.pIdx)} eli 6 karta tamamlandı (+${ev.n})` : `Elin 6 karta tamamlandı (+${ev.n})`) : null;
     if (ev.type === 'tradeDeclined') return `${nm(ev.pIdx)} takası kabul etmedi`;
     if (ev.type === 'tradeOffer') return human_(ev.to) ? null : (ev.text ?? `${nm(ev.from)}, ${nm(ev.to)} ile takas teklif etti`);
@@ -497,7 +523,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       if (hs.length === 1) viewer = hs[0];
       else if (viewer != null && st.players[viewer]?.bot) viewer = null;
       if (st.active !== lastActive) { lastActive = st.active; selected = null; passAsk = false; sheet = null; trade = {}; }
-      if (selected && (st.phase !== 'move' || !st.players[viewer ?? -1]?.hand.includes(selected))) selected = null;
+      if (selected && ((st.phase !== 'move' && !(st.phase === 'ahlak' && CARDS[selected]?.kargo)) || !st.players[viewer ?? -1]?.hand.includes(selected))) selected = null;
       let k = 0;
       for (const ev of events) {
         { const tx = evText(ev); if (tx) toast(tx); else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
@@ -522,7 +548,9 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       let a;
       if (st.phase === 'close') a = legal.find(l => l.type === 'closeTile' && l.tile === idx);
       else if (st.phase === 'move') {
-        if (st.tiles[idx]?.closed) {
+        const goal = st.players[st.active].task && CITIES[CARDS[st.players[st.active].task].city]?.tile;
+        if (idx === goal && has('enterCity')) a = { type: 'enterCity' };
+        else if (st.tiles[idx]?.closed) {
           if (!legal.some(l => l.type === 'openRoad' && l.tile === idx)) return false;
           sheet = { kind: 'road', tile: idx }; trade = {}; selected = null; renderAll(); return true;
         } else if (selected) {
@@ -569,6 +597,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
         <div class="ay-field">Oyuncu sayısı</div>
         <div class="ay-toggles five">${[2, 3, 4, 5, 6].map(k => `<button class="ay-tg ${k === n ? 'sel' : ''}" data-n="${k}"><b>${k}</b><small>kişi</small></button>`).join('')}</div>
         <div class="ay-players">${rows}</div>
+        <div class="ay-ask ay-dirnote" hidden>Masada kural kitabındaki gibi sağdan sola oturun. Sıra bu listedeki gibi gider.</div>
         <div class="ay-field">İlk kim başlar? <small>(yaşı en küçük)</small></div>
         <div class="ay-starters"></div>
         <div class="ay-warn" hidden>En az bir insan oyuncu olmalı.</div>
@@ -587,6 +616,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
           `<button type="button" class="ay-st ${i === first ? 'sel' : ''}" data-s="${i}" style="--pc:${pcolor(i)}"><i class="dot"></i>${esc(nameOf(i))}</button>`).join('');
         const ok = Array.from({ length: n }, (_, i) => i).some(i => !isBot(i));
         startEl.querySelector('.ay-warn').hidden = ok;
+        startEl.querySelector('.ay-dirnote').hidden = Array.from({ length: n }, (_, i) => i).filter(i => !isBot(i)).length < 2;
         startEl.querySelector('[data-go]').disabled = !ok;
       };
       startEl.addEventListener('input', paint);

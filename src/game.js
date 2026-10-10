@@ -25,6 +25,17 @@ export const WANT_KINDS = [...ILKE_IDS, 'ahievran', 'kargo'];
 export const wantKind = (id) => { const c = CARDS[id]; return c.joker ? 'ahievran' : c.kargo ? 'kargo' : c.ilke; };
 // cards that count for a closed road of this ilke: own ilke first, then jokers (deterministic order)
 const roadCards = (hand, ilke) => [...hand.filter((id) => CARDS[id].ilke === ilke), ...hand.filter((id) => CARDS[id].joker)];
+// All card sets (1..max cards) a player may put on a closed road: any count per kind (ilke / written ilke / joker).
+// Per size the default set (ilke cards in hand order, jokers last) comes first; cards stay in roadCards order.
+function roadVariants(hand, ilke, max) {
+  const own = roadCards(hand, ilke), groups = new Map();
+  for (const id of own) groups.set(kind(id), [...(groups.get(kind(id)) ?? []), id]);
+  let combos = [[]];
+  for (const g of groups.values()) combos = combos.flatMap((c) => Array.from({ length: Math.min(g.length, max - c.length) + 1 }, (_, n) => [...c, ...g.slice(0, n)]));
+  const isDefault = (c) => c.every((id, i) => id === own[i]);
+  return combos.filter((c) => c.length).map((c) => c.sort((x, y) => own.indexOf(x) - own.indexOf(y)))
+    .sort((x, y) => x.length - y.length || isDefault(y) - isDefault(x));
+}
 
 export function newGame({ players, seed = 1, startIdx = 0 }) {
   need(players.length >= 2 && players.length <= 6, '2-6 oyuncu gerekli');
@@ -91,6 +102,9 @@ function enter(s, pi, tile, ev) {
   }
 }
 
+// Pawn stands on one of the 3 tiles next to its task city (rule 20): it may enter the city.
+const nearGoal = (s, p) => !!p.task && neighbors(p.pos).includes(cityTile(CARDS[p.task].city));
+
 // Complete the task (pawn goes to the city), draw next; same-city tasks complete immediately.
 function deliver(s, pi, ev) {
   const p = s.players[pi];
@@ -112,6 +126,7 @@ function deliver(s, pi, ev) {
 
 function endTurn(s, ev) {
   const p = s.players[s.active];
+  if (!s.moveDone && nearGoal(s, p)) deliver(s, s.active, ev); // book s.4: trade is won at the end of the turn
   refill(s, s.active, ev);
   const next = (s.active + 1) % s.players.length;
   log(ev, 'endTurn', `${p.name} turunu bitirdi.`, { pIdx: s.active });
@@ -136,9 +151,12 @@ const moveTargets = (s, p, id) => {
 function moveOptions(s, p) {
   const out = [];
   for (const card of dedupe(p.hand)) for (const tile of moveTargets(s, p, card)) out.push({ type: 'move', card, tile });
+  return [...out, ...kargoOptions(s, p)];
+}
+// kargo may be played before any move of the turn, even before the ahlak card (AHI-005)
+function kargoOptions(s, p) {
   const kargo = p.hand.find((id) => CARDS[id].kargo);
-  if (kargo && s.movesThisTurn === 0) for (const city of Object.keys(CITIES)) if (cityTile(city) !== p.pos) out.push({ type: 'kargo', card: kargo, city });
-  return out;
+  return kargo && s.movesThisTurn === 0 && !s.moveDone ? Object.keys(CITIES).filter((city) => cityTile(city) !== p.pos).map((city) => ({ type: 'kargo', card: kargo, city })) : [];
 }
 const canPass = (s, p) => s.phase === 'move' && !s.moveDone && s.movesThisTurn === 0 && !moveOptions(s, p).length;
 
@@ -157,18 +175,18 @@ export function legalActions(s) {
     return out;
   }
   if (pd?.kind === 'road') {
-    const cards = roadCards(s.players[pd.ask].hand, pd.ilke);
     out.push({ type: 'contribute', cards: [] });
-    for (let n = 1; n <= Math.min(pd.need, cards.length); n++) out.push({ type: 'contribute', cards: cards.slice(0, n) });
+    for (const cards of roadVariants(s.players[pd.ask].hand, pd.ilke, pd.need)) out.push({ type: 'contribute', cards });
     return out;
   }
   const p = s.players[s.active];
-  if (s.phase === 'ahlak') return [{ type: 'drawAhlak' }];
+  if (s.phase === 'ahlak') return [{ type: 'drawAhlak' }, ...kargoOptions(s, p)];
   if (s.phase === 'close') {
     return s.tiles.filter((t) => t.ilke === s.pendingClose && !t.closed && !t.occupants.length).map((t) => ({ type: 'closeTile', tile: t.idx }));
   }
   if (p.pendingText) out.push({ type: 'readText' });
   if (!s.moveDone) {
+    if (nearGoal(s, p)) out.push({ type: 'enterCity' });
     const mv = moveOptions(s, p);
     out.push(...mv);
     s.players.forEach((o, withPlayer) => {
@@ -178,9 +196,9 @@ export function legalActions(s) {
       }
     });
     for (const t of s.tiles) {
-      if (!t.closed) continue;
-      const cards = roadCards(p.hand, t.ilke);
-      for (let n = 1; n <= Math.min(4, cards.length); n++) out.push({ type: 'openRoad', tile: t.idx, cards: cards.slice(0, n) });
+      if (!t.closed || s.roadTries >= MAX_ROAD_CALLS) continue;
+      out.push({ type: 'openRoad', tile: t.idx, cards: [] }); // AHI-008: others may complete it
+      for (const cards of roadVariants(p.hand, t.ilke, 4)) out.push({ type: 'openRoad', tile: t.idx, cards });
     }
     if (!mv.length && s.movesThisTurn === 0) out.push({ type: 'pass' });
   }
@@ -202,6 +220,7 @@ function roadOpened(s, ev, me, T, offers) {
   if (ILKE_IDS.every((i) => s.awards[i] === 0)) setEnd(s, ev, 'ödül havuzları boşaldı');
 }
 
+const MAX_ROAD_CALLS = 2; // per turn; digital guard against pestering online players (AHI-008)
 const askNext = (s, ev, tile, ask, needN) => {
   s.pending.ask = ask; s.pending.need = needN;
   log(ev, 'roadAsk', `${s.players[ask].name}, yolu açmak için ${needN} kart daha gerekiyor. Katkı verir misin?`, { tile, ask, need: needN });
@@ -212,7 +231,7 @@ export function apply(state, a) {
   need(s.phase !== 'over', 'oyun bitti');
   const resp = a.type === 'respondTrade' || a.type === 'contribute';
   need(resp ? s.pending?.kind === (a.type === 'respondTrade' ? 'trade' : 'road') : !s.pending, 'bekleyen cevap var');
-  if (!resp && a.type !== 'readText' && a.type !== 'offerTrade') p.pendingText = null;
+  if (a.type === 'move') p.pendingText = null; // reading stays open until the next move or end of turn (AHI-007)
   const inMove = () => need(s.phase === 'move');
   const free = () => { inMove(); need(!s.moveDone); };
   const discard = (id) => { p.hand.splice(p.hand.indexOf(id), 1); s.decks.yolDiscard.push(id); };
@@ -268,11 +287,17 @@ export function apply(state, a) {
       s.movesThisTurn++;
       log(ev, 'move', `${p.name} piyonunu ${ILKELER[s.tiles[a.tile].ilke].name} karesine taşıdı.`, { pIdx: me, card: a.card, tile: a.tile });
       if (c.hasText) { p.pendingText = c.id; log(ev, 'text', `${p.name} kart yazısını okuyabilir (+1 rozet).`, { pIdx: me }); }
-      if (p.task && neighbors(a.tile).includes(cityTile(CARDS[p.task].city))) deliver(s, me, ev);
+      if (nearGoal(s, p)) log(ev, 'nearCity', `${p.name} görev şehrine komşu kareye geldi.`, { pIdx: me, city: CARDS[p.task].city });
+      break;
+    }
+    case 'enterCity': {
+      free();
+      need(nearGoal(s, p), 'şehre komşu değilsin');
+      deliver(s, me, ev);
       break;
     }
     case 'kargo': {
-      free();
+      need(s.phase === 'ahlak' || s.phase === 'move'); need(!s.moveDone);
       need(s.movesThisTurn === 0 && p.hand.includes(a.card) && CARDS[a.card].kargo && CITIES[a.city] && cityTile(a.city) !== p.pos, 'geçersiz kargo');
       discard(a.card);
       moveTo(s, me, cityTile(a.city));
@@ -316,9 +341,10 @@ export function apply(state, a) {
       const T = s.tiles[a.tile];
       need(T && T.closed, 'yol açılamaz');
       const own = roadCards(p.hand, T.ilke);
-      need(uniq(a.cards) && a.cards.length >= 1 && a.cards.length <= 4 && a.cards.every((id) => own.includes(id)), 'geçersiz kart');
+      need(uniq(a.cards) && a.cards.length <= 4 && a.cards.every((id) => own.includes(id)), 'geçersiz kart');
+      need(s.roadTries < MAX_ROAD_CALLS, 'bu turda çok fazla yol çağrısı');
       s.roadTries++;
-      const offers = [{ pIdx: me, cards: [...a.cards] }];
+      const offers = a.cards.length ? [{ pIdx: me, cards: [...a.cards] }] : [];
       if (a.cards.length === 4) { roadOpened(s, ev, me, T, offers); break; }
       s.pending = { kind: 'road', tile: a.tile, ilke: T.ilke, offers, ask: null, need: null };
       askNext(s, ev, a.tile, (me + 1) % s.players.length, 4 - a.cards.length);
