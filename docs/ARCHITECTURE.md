@@ -3,6 +3,19 @@
 Durum: **onaylandı (2026-10-10)**. Sunucu: Dokploy üzerinde tek Node konteyneri. Kurallar: kural kitabına göre. Mobil: Capacitor.
 Bu belge `SPEC.md` ile birlikte okunur. Kural davranışı SPEC'tedir; burası sistemin parçalarını, aralarındaki sözleşmeleri ve dağıtımı anlatır.
 
+
+### Kararlar (2026-10-10)
+| # | Karar | Durum |
+|---|---|---|
+| K1 | Tek Node 22 konteyneri, `server/index.js` (HTTP + WS), oda durumu bellekte, `/data/rooms/<kod>.json` anlık görüntü; veritabanı, hesap ve sohbet yok | Onaylandı |
+| K2 | Barındırma: Dokploy "Application", GitHub kaynağı, `main` dalı, Dockerfile build, deploy webhook'u | Onaylandı |
+| K3 | Alan adı `ahilik.ssilistre.dev` (Let's Encrypt), DNS Cloudflare `ssilistre.dev` bölgesinde | Onaylandı |
+| K4 | Tek instance, toplam oda üst sınırı 500 (kapasite ölçümüyle doğrulanır) | Varsayılan |
+| K5 | GitHub Actions yalnız test ve `docker build` doğrular; deploy'u Dokploy webhook'u tetikler, GitHub'a sunucu anahtarı konmaz | Varsayılan |
+| K6 | Basılı kart sanatının public yayını için İGİAD izni yayından önce şart (`docs/` künye notu) | Karşılandı |
+| K7 | Sunucunun tek npm bağımlılığı `ws` (sabit sürüm), yalnız `server/package.json` içinde | Onaylandı |
+| K8 | Çocuk güvenliği: yalnız hazır tepkiler, ad filtresi, oda verisi 24 saat sonra silinir | Onaylandı |
+
 ## 1. Hedefler ve sınırlar
 
 **Hedefler**
@@ -322,6 +335,19 @@ flowchart LR
 - **DNS:** Cloudflare `ssilistre.dev` bölgesinde `ahilik` kaydı Dokploy sunucusuna gider (proxy kapalı ya da WebSocket destekli açık).
 - **Yerel geliştirme:** `docker compose up` → `http://localhost:8080` (port doluysa başka port seçilir). Saf modül testleri host'ta `node --test` ile koşar (bağımlılık yok). `ws` gerektiren sunucu testleri konteynerde koşar: `docker compose run --rm server npm test`.
 - **Service worker:** yalnız GET varlıklarını önbelleğe alır. `/api/*` ve `/ws/*` istekleri SW'yi atlar.
+
+
+### Dağıtım ön koşulları
+Değerler (adres, anahtar, IP, webhook) yalnız yerel geliştirici notlarındadır.
+1. Dokploy'da proje `ahilik-yolu`, içinde "Application" `ahilik-server`.
+2. Kaynak: GitHub `SSilistre-dev/ahilik-yolu`, dal `main`, Dockerfile build (`./Dockerfile`, bağlam `.`). Otomatik deploy ilk canlıya alma onayına kadar kapalı.
+3. Kalıcı birim `ahilik-data` → `/data`.
+4. Ortam değişkenleri: `PORT=8080`, `DATA_DIR=/data`, `MAX_ROOMS=500`, `ALLOWED_ORIGINS=https://ahilik.ssilistre.dev,capacitor://localhost,https://localhost`.
+5. Domain `ahilik.ssilistre.dev`, konteyner portu 8080, HTTPS, Let's Encrypt.
+6. DNS: `ahilik` kaydı Dokploy sunucusuna (proxy kapalı ya da WebSocket destekli açık).
+7. Dokploy'un depo erişimi ve push webhook'u.
+8. Konteyner günlük boyut sınırı (en çok 10 MB × 3 dosya).
+9. Sunucu CPU çekirdek sayısı ve RAM kapasite raporuna not edilir.
 
 ## 12. Güvenlik ve gizlilik
 
