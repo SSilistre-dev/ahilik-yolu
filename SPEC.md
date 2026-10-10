@@ -1,7 +1,7 @@
 # Ahilik Yolu — "Ahlakın Yolu" (dijital demo spesifikasyonu)
 
 İGİAD'ın Ahiliğin 7 ilkesine dayanan aile ticaret kutu oyununun Three.js demosu.
-Kaynak: kural kitabı (Haziran 2025) + tanıtım videosu (youtube.com/watch?v=VQYzfQjJEro).
+Kaynak: kural kitabı (PDF `Kural Kitabı - Talha temmuz25.pdf`, künye © Haziran 2025) + tanıtım videosu (youtube.com/watch?v=VQYzfQjJEro).
 
 ## İlkeler
 
@@ -50,7 +50,7 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
 
 ## Tur
 
-0. Oyuncu tur başında elini 6'ya tamamlayabilir (opsiyonel).
+0. Tur başında el 6'ya tamamlanır (kural 26, zorunlu; `refill` event'i).
 1. **Ahlak kartı aç (zorunlu).**
    - Olumlu kart açılırsa o ilkenin açık karelerine +1 rozet konur. Karede rozet varsa birikir.
      Karede piyon varsa rozeti o oyuncu hemen alır. Karede birden çok piyon varsa önce gelen alır.
@@ -60,7 +60,7 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
    - Her yol kartı, piyonu 8 komşu kareden ilkesi eşleşen birine götürür.
    - Kapalı kareye girilemez. Piyonlar üst üste durabilir.
    - Girilen karedeki rozetler alınır.
-   - Görev şehrine komşu bir kareye gelen oyuncu şehre varmış sayılır. Piyon şehre geçer,
+   - Görev şehrine komşu bir kareye gelen oyuncu şehre varmış sayılır (bugünkü kod: anında; v5'te "Şehre gir" aksiyonuna dönecek, bkz. "v5 kural kararları", AHI-004). Piyon şehre geçer,
      ticaret kartı kazanılır ve yeni görev çekilir.
      Yeni kart bulunduğu şehre aitse o görev de anında tamamlanır.
      Ticaret tamamlanınca hareket biter.
@@ -68,8 +68,8 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
 
 ### Ara hamleler (yalnız aktif oyuncu yapabilir)
 
-- **Takas:** başka bir oyuncuyla 1'e 1 kart değişimi.
-- **Kapalı yolu açma:** o ilkeden 4 kart verilir (ortaklaşa da olur). 4 kart ve olumsuz kart ıskartaya gider.
+- **Takas:** başka bir oyuncuya teklif; karşı taraf kabul ya da ret eder (v4).
+- **Kapalı yolu açma:** o ilkeden 4 kart verilir. Aktif oyuncu 1–4 kart koyar, kalanı koltuk sırasıyla diğer oyunculara sorulur (v4). 4 kart ve olumsuz kart ıskartaya gider.
   Ödül rozetleri, verilen kart sayısına göre paylaştırılır.
 - **Pas:** oyuncu tüm elini atar, 6 yeni kart çeker ve sırası biter.
 
@@ -88,7 +88,7 @@ Kazanç = tamamlanan ticaretlerin toplam parası × çarpan.
 
 | Rozet puanı | Çarpan |
 |---|---|
-| 0–4 | ×1 (varsayım) |
+| 0–4 | ×1 (varsayım; kitap tablosu 5'ten başlar, s.5) |
 | 5–9 | ×2 |
 | 10–14 | ×3 |
 | 15–19 | ×4 |
@@ -100,22 +100,24 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
 
 - Build yok, npm yok. Static `index.html` + ES modules.
   three.js `0.160.0` importmap ile `cdn.jsdelivr.net`'ten yüklenir. Proje GitHub Pages'te olduğu gibi çalışır.
-- Varsayılan mod 1 insan + 1–3 bot. Eller açık; "cihazı ver" ekranı yok.
-- Bot aptal: göreve BFS ile en kısa `move` yapar, yoksa `pass` eder.
-  Bot takas, yol açma ve okuma yapmaz.
+- Varsayılan mod 1 insan + 1–3 bot. Eller gizlidir (başkasının elinde yalnız kart sayısı görünür);
+  aynı cihazda birden çok insan varsa "Telefonu X'e ver" perdesi çıkar (v4).
+- Bot basittir: göreve BFS ile en kısa `move` yapar. Yazıyı okur, takas teklif eder, takas ve yol katkısına cevap verir,
+  kapalı yolu açmaya girişir; hamle yoksa `pass` eder (v4, `src/bot.js`).
 - Kargo kartı yalnız `phase==='move' && movesThisTurn===0` iken oynanır.
-  Ahlak kartı açmak hamle sayılmaz. Kargo görev şehrine uçarsa ticaret tamamlanır.
+  Ahlak kartı açmak hamle sayılmaz. Kargo görev şehrine uçarsa ticaret tamamlanır
+  (AHI-005 ile netleşecek: kullanıcı kararı "ahlak kartından önce de oynanabilir", bkz. v5 kural kararları).
 - Ahi Evran jokeri hareket, yol açma ve takasta her ilke yerine geçer.
-- `openRoad {tile}` aksiyonunun katkılarını engine deterministik hesaplar.
-  Önce aktif oyuncunun eşleşen kartları (joker dahil) alınır. Kalanı koltuk sırasıyla diğer oyunculardan tamamlanır.
-  Tam 4 kartta durulur. Aktif oyuncu en az 1 kart vermelidir.
-  Ödül 1 kart = 1 rozettir ve havuzdan verilir.
+- `openRoad {tile, cards}`: aktif oyuncu 1–4 uygun kartını (joker dahil) koyar. 4'e ulaşmazsa diğer oyunculara
+  koltuk sırasıyla sorulur; her biri `contribute {cards}` ile 0..eksik kart verir. Ayrıntı v4 bölümündedir.
+  Ödül 1 kart = 1 rozettir ve havuzdan verilir. Kartsız başlatma ve tur sınırı: AHI-008, v5 kural kararları.
 - Ahlak kartıyla konan rozetler kasadan gelir (sınırsız). Ödül havuzu yalnız yol açınca boşalır.
-- Şehir kareleri hamle hedefi değildir. Görev şehrine komşu kareye basılınca piyon otomatik olarak şehre geçer.
-- Elin 6'ya tamamlanması `endTurn` ve `pass` içinde otomatik yapılır. Ayrı `refill` aksiyonu yok.
-- Grafik prosedüreldir: 7 ilke için CanvasTexture kullanılır. Bitmap ve PDF varlık kullanılmaz.
-  Kartlar, el ve log HTML'dir. 3B sahnede yalnız tahta, piyonlar, rozetler ve kapalı kare engelleri var.
-- Mobil kuralları:
+- Şehir kareleri hamle hedefi değildir. Görev şehrine komşu kareye basılınca piyon şehre geçer
+  (bugünkü kod: otomatik; AHI-004 ile "Şehre gir" aksiyonuna dönecek, bkz. v5 kural kararları).
+- Elin 6'ya tamamlanması tur başında (`refill`, kural 26) ve `endTurn`/`pass` içinde otomatik yapılır. Ayrı `refill` aksiyonu yok.
+- Grafik v2'de değişti: basılı ilke görselleri (JPG) ve glTF modeller kullanılır (bkz. v2). Prosedürel CanvasTexture yalnız yedektir.
+  Kartlar, el ve log HTML'dir.
+- Mobil kuralları (v2 "Mobil bütçe" ile değişti: gölge piyon ve simgelerde açık, animasyon sürerken loop çalışır):
   - OrbitControls yok. Kamera sabit eğik açılı.
   - Tap ile drag, 8px eşiğiyle ayrılır.
   - Canvas'ta `touch-action:none` kullanılır.
@@ -135,6 +137,10 @@ state = {
   endgame: false,                  // end triggered; game ends when turn wraps to startIdx
   movesThisTurn: 0,
   pendingClose: null,              // ilke id while phase==='close'
+  moveDone: false,                 // v4: ticaret bitti, bu turda hareket kalmadı
+  pending: null,                   // v4: bekleyen takas teklifi ya da yol katkısı sorusu (aşağıda)
+  declined: [],                    // v4: bu turda reddedilen takas teklifleri [{to,want}]
+  offersThisTurn: 0, roadTries: 0, // v4: tur içi sayaçlar (bot döngü koruması), endTurn'de 0
   tiles: [25]{ idx, r, c, kind:'city'|'ilke', ilke, city, closed:false, closedBy:null, badges:0, occupants:[pIdx] }, // occupants ordered by arrival
   awards: { [ilke]: 4 },
   players: [{ name, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
@@ -149,7 +155,14 @@ state = {
 - `score(state) -> [{ pIdx, money, badges, mult, total, rank }]` (rank'e göre sıralı)
 
 Aksiyonlar:
-`{type:'drawAhlak'}` · `{type:'closeTile',tile}` · `{type:'move',card,tile}` · `{type:'kargo',card,city}` · `{type:'readText'}` · `{type:'trade',withPlayer,give,want}` · `{type:'openRoad',tile}` · `{type:'pass'}` · `{type:'endTurn'}`
+`{type:'drawAhlak'}` · `{type:'closeTile',tile}` · `{type:'move',card,tile}` · `{type:'kargo',card,city}` · `{type:'readText'}` · `{type:'offerTrade',withPlayer,give,want}` · `{type:'respondTrade',accept,card?}` · `{type:'openRoad',tile,cards}` · `{type:'contribute',cards}` · `{type:'pass'}` · `{type:'endTurn'}`
+
+`undo` ve `newGame` motor aksiyonu değildir; glue katmanı (`main.js`) işler. Aksiyonların koşulları v4 bölümündedir.
+
+### Event listesi
+
+`game.js`'in ürettiği tüm event tipleri (alanlar `pIdx` dışında tip başına):
+`ahlak {pIdx,card,ilke}` · `badgePlaced {tile}` · `badges {pIdx,tile,n}` · `close {pIdx,tile,paid}` · `endgame` · `endTurn {pIdx}` · `kargo {pIdx,city}` · `move {pIdx,card,tile}` · `openRoad {pIdx,tile,contrib}` · `over` · `pass {pIdx}` · `read {pIdx}` · `refill {pIdx,n}` · `roadAsk {tile,ask,need}` · `roadFailed {tile}` · `swap {pIdx,withPlayer,give,want}` · `task {pIdx,card?}` · `text {pIdx}` · `trade {pIdx,card,city,value}` · `tradeDeclined {pIdx,from,want}` · `tradeOffer {from,to,give,want}`
 
 `src/bot.js`: `botAction(state) -> Action`.
 
@@ -248,7 +261,7 @@ Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesi
 ### Kullanıcı kararları (2026-10-09)
 - Görev şehrine varıp ticareti tamamlayan oyuncunun o turki hareketi biter (`moveDone`). Kalan kartlarla devam edemez.
 - Ahi Evran jokeri kapalı yolu açarken 4 karttan biri yerine sayılır.
-- **AÇIK SORU (oyun yazarına sorulacak):** Kargo Uçağı ahlak kartından önce mi oynanır?
+- **AÇIK SORU (kullanıcı kararı v5 kural kararları'nda, AHI-005):** Kargo Uçağı ahlak kartından önce mi oynanır?
   Kitapçık "sırasının başında, hiçbir hamle yapmamış olmalı" diyor; ahlak kartı açmak da 1. hamle sayılıyor.
   Cevap gelene kadar mevcut davranış kalır: ahlak kartından sonra, piyon hareket etmeden.
 
@@ -307,3 +320,120 @@ state += {
 - Uygulamada eklenen alanlar: `offersThisTurn` ve `roadTries` (tur içi sayaçlar, `endTurn`'de 0; bot en çok 2 teklif, 1 yol denemesi yapar).
   `refill` event'i tur sonunda da çıkar. `game.js` ayrıca `WANT_KINDS` (9 tür) ve `wantKind(cardId)` export eder.
   Kendi türünü isteyen takas teklifi yasal değildir.
+
+## Bilinçli sapmalar ve notlar (kitap ↔ dijital)
+
+Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
+
+## v5: Çevrimiçi sözleşme (2026-10-10)
+
+Kaynak: `docs/ARCHITECTURE.md` (onaylı). Bu bölüm v1–v4 ile çelişirse v5 geçerlidir. Kural davranışı değişmez; v5 yalnız "kim neyi görür" ve "oyun makineler arasında nasıl taşınır" sözleşmesidir.
+
+### Modlar ve otorite
+- Dört mod: botlarla (yerel), aynı telefonda (yerel), arkadaşlarla (çevrimiçi), çevrimiçi odada botlu (karma).
+- Çevrimiçi modda **sunucu otoriterdir**: tam `state` yalnız sunucudadır. İstemci `view` alır, `act` yollar. İstemci kendi başına `apply` çağırmaz.
+- `src/game.js` tarayıcıda ve sunucuda aynı dosyadır; `apply` girdiyi değiştirmez ve fırlatırsa state değişmez.
+
+### View
+```js
+viewFor(state, seat, gameId) -> view   // seat: 0..5 ya da null (izleyici)
+eventsFor(events, seat) -> events      // seat'e gösterilebilir event'ler
+```
+`view`, `state` ile aynı şekildedir; gizli alanlar boşaltılmıştır:
+
+| Alan | View'da |
+|---|---|
+| `seed` | silinir; yerine `gameId` (oyun başına rastgele 12 karakter, `[a-z2-9]`) |
+| `rng` | `0` |
+| `players[i].hand`, `i !== seat` | aynı uzunlukta `null` dizisi |
+| `decks.yol`, `decks.ahlak`, `decks.ticaret` | aynı uzunlukta `null` dizisi |
+| `decks.yolDiscard`, `decks.ahlakDiscard` | açık |
+| `players[i].task`, `players[i].trades` | açık |
+| `pending.trade.give` | yalnız `from` ve `to` için açık, diğerlerinde `null` |
+| `pending.road.offers[].cards` | açık |
+
+`eventsFor`: `swap` event'indeki `give`/`want` kart kimlikleri yalnız iki tarafa açık, diğerlerine `null`; `refill` yalnız sayı taşır; `task` event'indeki yeni görev açıktır.
+Değişmez test şartı: rastgele oyunun her adımında, bir koltuğun kendi eli dışındaki hiçbir yol kartı kimliği ve hiçbir deste sırası `JSON.stringify(view)` ve `JSON.stringify(eventsFor(...))` içinde geçmez.
+
+### Bot imzası
+`botAction(view, legal, level) -> Action`. `level`: `'easy' | 'medium' | 'hard'`. Bot yalnız kendi koltuğunun `view`'ını ve `legal` listesini görür; `legal`'i çağıran taraf tam state'ten `legalActions(state)` ile üretir. Bot saf ve deterministiktir: rastgelelik yalnız `view.gameId`, `view.turn`, `view.movesThisTurn`, `view.offersThisTurn`, `view.roadTries` ve `legal.length` değerlerinden türetilir. Aynı view aynı kararı verir (yerel ve sunucu oturumunda aynı).
+
+### Koltuk, token, host
+- Koltuk numarası `players[]` indeksidir (0–5). Lobide koltuklar sıkışık dizidir; bir koltuk kalkınca sonrakiler kayar ve etkilenen insanlara yeni `welcome` gider.
+- İlk bağlanan insan host'tur. Host ayrılırsa en küçük numaralı çevrimiçi insana devredilir.
+- Token: 32 onaltılık karakter (128 bit), yalnız o odada geçerli. İstemci `localStorage['ahilik.room.'+kod]` içinde saklar. Token hiçbir `lobby`/`game`/`emote` mesajında bulunmaz ve URL'ye konmaz.
+- Aynı token ile ikinci bağlantı gelirse eski bağlantı `error{code:'replaced'}` ile kapatılır.
+- Ad: NFC normalleştirilmiş, kırpılmış, 1–16 karakter, kontrol karakteri yok, yasaklı kelime listesi yok. Aynı ad ikinciye `" (2)"` ekiyle verilir (16 karaktere kırpılarak). `avatar`: 0–7 tamsayı.
+
+### Protokol v1 (WebSocket, JSON, `/ws/<KOD>`)
+Her mesaj `{ v:1, t:<tip>, ... }`. UTF-8 gövde en çok 8192 bayt; bağlantı başına saniyede en çok 20 mesaj. Aşan bağlantı `error{code:'rate'}` alır ve kapatılır. `hello` bağlantıdan sonra 10 sn içinde gelmezse bağlantı kapatılır.
+
+İstemci → sunucu:
+
+| t | alanlar | kim | koşul |
+|---|---|---|---|
+| `hello` | `token?`, `name`, `avatar` | herkes | İlk mesaj. Token varsa aynı koltuğa döner. |
+| `ready` | `on:bool` | insan | Lobi. Host için yok sayılır (host her zaman hazır). |
+| `addBot` | `level` | host | Lobi, boş koltuk var. Adı sunucu verir. |
+| `setBot` | `seat`, `level` | host | Lobi, o koltuk bot. |
+| `removeSeat` | `seat` | host | Lobi. Bot çıkar, insan atılır. Host kendini atamaz. |
+| `setOptions` | `turnSeconds:0\|30\|60\|120`, `startSeat:'random'\|0..5` | host | Lobi. |
+| `start` | – | host | ≥2 koltuk, tüm insanlar hazır. |
+| `act` | `action`, `base:int` | actor | `phase:'game'`. `base` güncel `version` olmalı. `undo` kabul edilmez. |
+| `emote` | `id` | oyuncu | `id` ∈ `selam, aferin, olsun, tesekkurler, hadi, dusunuyorum`. Koltuk başına 2 sn'de 1. |
+| `rematch` | – | oyuncu | `phase:'over'`. |
+| `leave` | – | oyuncu | Lobide koltuk kalkar; oyunda koltuk kalıcı Orta bot olur. |
+| `ping` | – | herkes | 25 sn'de bir. |
+
+Sunucu → istemci:
+
+| t | alanlar | açıklama |
+|---|---|---|
+| `welcome` | `code`, `you:{seat, token}` | Katılma ve koltuk kayması sonrası. |
+| `lobby` | `seats:[{seat,name,avatar,bot,level,ready,online,host}]`, `options`, `phase` | Lobi her değiştiğinde herkese. |
+| `game` | `version`, `gameId`, `view`, `legal`, `events`, `deadline`, `now`, `seats`, `rematch` | Her aksiyondan sonra koltuk başına ayrı. `legal` yalnız sırası gelen koltuğa dolu, diğerlerine `[]`. `deadline`: sıradaki zamanlayıcının epoch ms değeri ya da `null`. `now`: sunucu saati (istemci farkı hesaplar). `seats`: herkese açık künye `{seat,name,avatar,bot,level,online,takeover}`. `rematch`: yalnız `phase:'over'`'da `{votes:[seat], need:int}`. |
+| `emote` | `seat`, `id` | Herkese. |
+| `error` | `code`, `msg` | Aşağıdaki kodlar. `msg` Türkçe, çocuğa gösterilebilir. |
+| `pong` | – | `ping` cevabı. |
+
+Hata kodları: `stale` (base eski), `illegal`, `notYourTurn`, `notHost`, `full`, `started`, `notFound`, `rate`, `tooBig`, `badMsg`, `badName`, `version` (protokol `v` desteklenmiyor), `kicked`, `replaced`, `expired`. Bağlantıyı kapatanlar: `full`, `started`, `notFound`, `rate`, `tooBig`, `version`, `kicked`, `replaced`, `expired`. `stale` sonrası sunucu güncel `game` mesajını ayrıca yollar.
+
+### Oda yaşam döngüsü ve zamanlayıcılar
+`lobby -> game -> over -> (rematch) game`, her aşamadan 24 saat hareketsizlikle silinir. Hareket: insandan gelen `ping` dışı mesaj, bağlanma, kopma. Hiç insan katılmamış oda 1 saat sonra silinir.
+
+| Olay | Süre | Sonuç |
+|---|---|---|
+| Bot sırası | 700 ms; ahlak kartı sonrası 1200 ms | `botAction(viewFor(state, seat), legalActions(state), level)` uygulanır. |
+| Tur süresi (`turnSeconds>0`) | 30/60/120 sn | Çevrimiçi insan süre aşarsa o turun kalanını Orta bot oynar; log: "süre doldu, otomatik oynandı". |
+| Cevap süresi (takas/yol katkısı) | 20 sn | Takas reddedilir; yol katkısı `[]`. |
+| Kopan bağlantı (oyunda) | 30 sn | Koltuk `takeover:true` olur, Orta bot oynar; oyuncu token ile dönünce `takeover:false`. |
+| Kopan bağlantı (lobide) | 30 sn | Koltuk düşer; host ise devredilir. |
+| Hiç insan çevrimiçi değil | – | Bot ve süre zamanlayıcıları durur; biri bağlanınca sürer. |
+| Rematch | – | `votes*2 > çevrimiçi insan sayısı` ise yeni tohumla aynı koltuklar; başlayan koltuk bir kayar; `version` 1'e, `gameId` yenilenir. |
+
+Sürüm: her başarılı `act` `version`'ı 1 artırır; oyun başında 1'dir. Sunucu aynı anda tek aksiyon işler.
+
+### Session arayüzü (istemci)
+```js
+session = { mode:'local'|'online', you:seat|null, act(action), onUpdate(cb), undo?(), leave() }
+// cb({ view, legal, events, meta:{ conn:'ok'|'reconnecting'|'lost', deadline:epochMs|null, seats } })
+```
+UI ve sahne `state` yerine `view` alır.
+
+### Davet kodu
+Alfabe `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 karakter), uzunluk 6 (887 503 681 kombinasyon). Giriş büyük/küçük harf duyarsızdır, boşluklar atılır. Link `https://ahilik.ssilistre.dev/?oda=KOD`. Oyun başladıktan sonra yalnız token sahibi katılabilir.
+
+### HTTP
+`POST /api/rooms` -> `201 {code}` (IP başına dakikada 10; aşımda `429 {error:'rate'}`; kod çakışması 5 denemede çözülmezse ya da toplam oda üst sınırı (500) dolduysa `503 {error:'busy'}`), `GET /api/rooms/<KOD>` -> `200 {exists, phase, humans, capacity, joinable}` (kod biçimi geçersizse `400 {error:'badCode'}`, dakikada 60 sorguyu aşınca `429`), `GET /api/health` -> `200 {ok:true, ...}` (N20 `startedAt`, N22 süreç metriği alanlarını ekler; istemciler yalnız `ok` alanına bağlanır). Tüm cevaplar `cache-control: no-store`. İstemci IP'si ters vekilin `X-Forwarded-For` başlığındaki en sağdaki girdidir (yalnız hız sınırı için, bellekte).
+
+### v5 kural kararları (planlanan)
+
+Kullanıcı kararı (2026-10-10): aşağıdaki dört kural kural kitabına göre uygulanacaktır. **Hepsi planlanandır**: bu belge yazıldığında motor (`src/game.js`) değişmemiştir; her biri kendi issue'sunda koda geçer ve geçince bu başlıktaki "planlanan" işareti kalkar. Kod ile bu bölüm çeliştiği sürece kod geçerlidir.
+
+- **Şehre gir (AHI-004, planlanan):** görev şehrine komşu kareye gelmek ticareti anında tamamlamaz; `move` yalnız `nearCity {pIdx,city}` event'i üretir.
+  Yeni aksiyon `{type:'enterCity'}`: `phase==='move'`, `!moveDone` ve piyon görev şehrine komşuyken yasaldır; ticaret tamamlanır, yeni görev çekilir (aynı şehirse zincirleme), `moveDone=true`.
+  Oyuncu girmek yerine kartlarıyla yolu uzatıp rozet toplayabilir. Tur sonunda (`endTurn`, `pass`, `kargo`) hâlâ görev şehrine komşu karedeyse ticaret otomatik tamamlanır (kural 4, kitap s.4).
+- **Kargo ahlak kartından önce de oynanır (AHI-005, planlanan):** `kargo` yalnız `phase==='move'` ile sınırlı kalmaz; `phase==='ahlak'` iken de yasaldır (`movesThisTurn===0`, `!moveDone`). Ahlak fazında oynanırsa ahlak destesine dokunulmaz ve sıra biter. Ahlak kartından sonra, piyon hareket etmeden oynanması da sürer.
+- **Kartsız yol çağrısı ve tur sınırı (AHI-008, planlanan):** `openRoad {tile, cards:[]}` yasaldır; kartsız başlatan oyuncu rozet almaz, kart verenler paylaşır. Tüm oyuncular reddederse `roadFailed`, kimse kart kaybetmez.
+  Tur başına en çok 2 yol çağrısı: `roadTries < 2` iken `openRoad` yasaldır (insan ve bot için aynı).
+- **Uzun oyun seçeneği (AHI-028, planlanan):** 5–6 oyuncuda isteğe bağlı "uzun oyun" ayarı; **varsayılan kapalı**. Ayrıntı (hangi sayılar değişir) AHI-028 ile bu bölüme eklenir; çevrimiçi odada `setOptions` ile host seçer, bunun için `options` alanı o issue'da genişler.
