@@ -21,3 +21,10 @@ test('sim: geçersiz seviye ve dizilim uzunluğu reddedilir', () => {
   assert.throws(() => parseLineup(LEVELS.length ? [LEVELS[0], LEVELS[0]] : [], 4), /değer ister/);
   assert.throws(() => runSim({ players: 7 }), /2-6/);
 });
+
+test('sim: long bayrağı oyunu uzatır (6 oyuncu), varsayılan kapalı', () => {
+  const normal = runSim({ games: 72, players: 6, levels: ['medium'], seed: 1 });
+  const long = runSim({ games: 72, players: 6, levels: ['medium'], seed: 1, long: true });
+  assert.equal(normal.long, false);
+  assert.ok(long.avgTurns > normal.avgTurns, `uzun ${long.avgTurns} normal ${normal.avgTurns}`);
+});

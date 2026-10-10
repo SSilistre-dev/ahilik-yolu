@@ -1,4 +1,6 @@
 {
+ "long": false,
+ "reshuf": false,
  "seed": 11,
  "rng": 3967685022,
  "phase": "move",

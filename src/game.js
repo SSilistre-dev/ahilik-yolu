@@ -37,10 +37,11 @@ function roadVariants(hand, ilke, max) {
     .sort((x, y) => x.length - y.length || isDefault(y) - isDefault(x));
 }
 
-export function newGame({ players, seed = 1, startIdx = 0 }) {
+export function newGame({ players, seed = 1, startIdx = 0, long = false }) {
   need(players.length >= 2 && players.length <= 6, '2-6 oyuncu gerekli');
   need(startIdx >= 0 && startIdx < players.length, 'geçersiz başlangıç oyuncusu');
   const s = {
+    long: !!long, reshuf: false, // AHI-028: uzun oyun seçeneği (varsayılan kapalı); reshuf: ıskarta bir kez karıştırıldı
     seed, rng: seed >>> 0, phase: 'ahlak', turn: 0, active: startIdx, startIdx, endgame: false,
     movesThisTurn: 0, pendingClose: null, moveDone: false, // moveDone: set after a trade ends movement
     pending: null, declined: [], // SPEC v4
@@ -146,6 +147,11 @@ function endTurn(s, ev) {
   if (next === s.startIdx && s.endgame) { s.phase = 'over'; log(ev, 'over', 'Oyun bitti.'); }
   else {
     refill(s, next, ev); // rule 26: top up to 6 before the ahlak card
+    if (!s.decks.ahlak.length && s.long && !s.reshuf) { // AHI-028: ıskarta bir kez karışıp yeni deste olur
+      s.reshuf = true;
+      if (s.decks.ahlakDiscard.length) s.decks.ahlak = shuffle(s, s.decks.ahlakDiscard.splice(0));
+      else setEnd(s, ev, 'ahlak destesi bitti');
+    }
     if (s.decks.ahlak.length) s.phase = 'ahlak';
     else { s.phase = 'move'; log(ev, 'ahlak', 'Ahlak destesi bitti. Bu tur ahlak kartı yok.', { pIdx: next, empty: true }); }
   }
@@ -253,7 +259,7 @@ export function apply(state, a) {
       const id = s.decks.ahlak.pop();
       if (!id) { s.phase = 'move'; log(ev, 'ahlak', 'Ahlak destesi bitti. Bu tur ahlak kartı yok.', { pIdx: me, empty: true }); break; }
       const c = CARDS[id], ad = ILKELER[c.ilke];
-      if (!s.decks.ahlak.length) setEnd(s, ev, 'ahlak destesi bitti');
+      if (!s.decks.ahlak.length && !(s.long && !s.reshuf)) setEnd(s, ev, 'ahlak destesi bitti');
       if (!c.negative) {
         s.decks.ahlakDiscard.push(id);
         log(ev, 'ahlak', `${p.name} olumlu ahlak kartı açtı: ${ad.name}. Açık karelere rozet konuyor.`, { pIdx: me, card: id, ilke: c.ilke });
