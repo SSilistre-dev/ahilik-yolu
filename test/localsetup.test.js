@@ -12,13 +12,17 @@ test('localsetup: uniqueNames', () => {
 
 test('localsetup: buildLocalGame', () => {
   const rows = [{ name: ' Ayşe ', bot: false }, { name: 'ayşe', bot: false }, { name: '', bot: true }, { name: '', bot: false }];
-  const g = buildLocalGame({ profile: { name: 'Zeynep', avatar: 'a1' }, rows, starter: 1 });
+  const g = buildLocalGame({ profile: { name: 'Zeynep', avatar: 'mage' }, rows, starter: 1 });
   assert.deepEqual(g.players.map(p => p.name), ['Ayşe', 'ayşe 2', 'Bot 2', 'Oyuncu 4']);
   assert.deepEqual(g.players.map(p => p.bot), [false, false, true, false]);
   assert.equal(g.startIdx, 1);
-  const h = buildLocalGame({ profile: { name: 'Zeynep', avatar: 'a1' }, rows: [{ name: '', bot: false }, { name: 'x', bot: true }], starter: 0 });
+  const h = buildLocalGame({ profile: { name: 'Zeynep', avatar: 'mage' }, rows: [{ name: '', bot: false }, { name: 'x', bot: true }], starter: 0 });
   assert.equal(h.players[0].name, 'Zeynep', 'boş ilk satır profil adına düşer');
-  assert.equal(h.players[0].avatar, 'a1');
+  assert.equal(h.players[0].avatar, 'mage');
+  assert.deepEqual(g.players.map(p => p.avatar), ['mage', 'rogue_hooded', 'knight', 'barbarian'], 'avatarlar sırayla, tekrarsız');
+  const six = buildLocalGame({ profile: null, rows: Array.from({ length: 6 }, () => ({ name: '', bot: false })) });
+  assert.equal(six.players.length, 6);
+  assert.ok(six.players.every(p => typeof p.avatar === 'string'), '6 oyuncuda hepsine karakter atanır');
 });
 
 test('localsetup: random starter', () => {

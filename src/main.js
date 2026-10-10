@@ -14,10 +14,10 @@ import { createRouter } from './router.js';
 import { createBotClock } from './botclock.js';
 import { applyTokens, createMenu } from './menu.js';
 import { registerMainScreens, createPause } from './menu-main.js';
-import { store, KEYS } from './store.js';
+import { getSettings, botDelays } from './store.js';
+import { defineProfile, getProfile } from './profile.js';
+import { defineSettings, applyDom } from './settings.js';
 
-const BOT_DELAY = 700;
-const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
 const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
@@ -33,7 +33,7 @@ let botFails = 0;
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
 
-const buzz = p => { try { navigator.vibrate?.(p); } catch {} };
+const buzz = p => { try { if (getSettings().vibrate) navigator.vibrate?.(p); } catch {} };
 
 const scene = createScene(document.getElementById('board'), {
   onTileTap: idx => {
@@ -141,8 +141,8 @@ function update(events) {
   renderScene();
   effects(events);
   if (state.phase !== 'over' && who.bot) {
-    const d = events.some(e => e.type === 'ahlak' && !e.empty) ? BOT_DELAY_AHLAK : BOT_DELAY;
-    clock.schedule(botNext, d);
+    const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
+    clock.schedule(botNext, events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot);
   }
 }
 
@@ -156,10 +156,12 @@ addEventListener('pointerdown', () => {
 document.getElementById('ui').addEventListener('click', e => { if (e.target.closest('.ay-card')) buzz(10); });
 
 // Ekran yönlendirici + menü ekranları (M03/M06/M09). Oyundayken geri tuşu/Escape Duraklat'ı açar, Duraklat'ta Devam eder.
+// Ayar değişince tek yerden uygulanır (DOM öznitelikleri, ses).
+const onSettings = s => { applyDom(s); sfx.setMuted(!s.sound, false); };
+onSettings(getSettings());
 applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
-const getProfile = () => { const p = store.get(KEYS.profile); return p && typeof p === 'object' ? p : null; };
 function toMenu() {
   clock.cancel(); clock.resume();
   started = false; state = null; undoStack = [];
@@ -175,6 +177,8 @@ registerMainScreens(menu, {
   router, getProfile, openHelp: () => ui.tutorial.openHelp(),
   startGame: opts => { start(opts); router.go('game'); },
 });
+defineProfile(menu, { router });
+defineSettings(menu, { router, onSettings, tutorial: () => ui.tutorial });
 router.onChange(({ name, params, dir }) => {
   if (name !== 'pause') pause.hide();
   document.getElementById('ui').classList.toggle('idle', name !== 'game' && name !== 'pause');
@@ -184,7 +188,9 @@ router.onChange(({ name, params, dir }) => {
   else { menu.toast('Yakında'); router.back(); }
 });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.target.closest?.('input,textarea')) router.back(); });
-router.start();
+// Profil yoksa ilk açılış ekranı; profil varken yenilemede eski "ilk açılış" kaydı menüye döner.
+const hs = history.state;
+router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
 window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };

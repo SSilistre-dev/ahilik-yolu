@@ -1,6 +1,7 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS, neighbors } from './data.js';
 import { createTutorial } from './tutorial.js';
 import { turnsLeft, endReason } from './game.js';
+import { reducedMotion } from './store.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -10,7 +11,7 @@ const money = p => p.trades.reduce((s, id) => s + CARDS[id].value, 0);
 const cityName = id => CITIES[id]?.name ?? id;
 // Engine dedupes identical cards in legalActions; compare cards by kind, not id.
 const kind = id => { const c = CARDS[id]; return c?.joker ? 'J' : c?.kargo ? 'K' : `${c?.ilke}${c?.hasText ? 'T' : ''}`; };
-const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced = () => reducedMotion();
 
 // Card art (own mapping; does not depend on src/assets.js). Resolved relative to this module.
 const ART = new URL('../assets/cards/', import.meta.url).href;

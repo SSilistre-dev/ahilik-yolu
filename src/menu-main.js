@@ -1,7 +1,7 @@
 // Ana menü, Aynı Telefonda/Botlarla kurulum ve Duraklat penceresi (M03/M06/M09) + künye (X02).
 // Saf yardımcılar dışa açık (test/menu.test.js, test/localsetup.test.js); ekranlar menu.js kitiyle çizilir.
 import { VERSION } from './version.js';
-import { PLAYER_COLORS } from './data.js';
+import { PLAYER_COLORS, AVATARS, assignAvatars } from './data.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const lower = s => s.toLocaleLowerCase('tr');
@@ -61,7 +61,8 @@ export function uniqueNames(names) {
 export function buildLocalGame({ profile, rows, starter = 0 }, rand = Math.random) {
   const names = uniqueNames(rows.map((r, i) => String(r.name ?? '').trim().slice(0, 16)
     || (i === 0 && !r.bot && profile?.name) || (r.bot ? `Bot ${i}` : `Oyuncu ${i + 1}`)));
-  const players = rows.map((r, i) => ({ name: names[i], bot: !!r.bot, ...(i === 0 && profile?.avatar ? { avatar: profile.avatar } : {}) }));
+  const avatars = assignAvatars(rows.length, profile?.avatar); // 1. oyuncu profil karakteri, diğerleri sırayla
+  const players = rows.map((r, i) => ({ name: names[i], bot: !!r.bot, avatar: avatars[i] }));
   const n = players.length;
   const startIdx = starter === 'random' ? Math.min(n - 1, Math.floor(rand() * n)) : Number.isInteger(starter) && starter >= 0 && starter < n ? starter : 0;
   return { players, startIdx };
@@ -79,11 +80,12 @@ export function registerMainScreens(menu, deps) {
     const profile = deps.getProfile?.() ?? null;
     const save = deps.loadSave?.() ?? null;
     const name = profile?.name ? esc(profile.name) : '';
+    const av = AVATARS.find(a => a.id === profile?.avatar);
     const list = mainButtons({ save, has: api.has });
     return {
       html: `<div class="mn-body mn-menu">
         <div class="mn-side"><img class="mn-logo" src="assets/cards/logo.jpg" alt="Ahilik Yolu" draggable="false">
-          <button type="button" class="mn-chip" data-go="profile" aria-label="Profili düzenle"><i class="av" aria-hidden="true">${esc([...(profile?.name ?? '?')][0]?.toLocaleUpperCase('tr') ?? '?')}</i><span>Merhaba${name ? `, ${name}` : ''}!</span></button></div>
+          <button type="button" class="mn-chip" data-go="profile" aria-label="Profili düzenle"><i class="av" aria-hidden="true"${av ? ` style="background:${av.color}"` : ''}>${av ? av.glyph : esc([...(profile?.name ?? '?')][0]?.toLocaleUpperCase('tr') ?? '?')}</i><span>Merhaba${name ? `, ${name}` : ''}!</span></button></div>
         <div class="mn-list">${list.map(btn).join('')}</div></div>
         <footer class="mn-credit"><span>İGİAD · Ahilik Yolu — dijital uyarlama: <a href="https://ssilistre.dev" target="_blank" rel="noopener">ssilistre.dev</a></span><small>sürüm ${VERSION}</small></footer>`,
       onMount(el) {
