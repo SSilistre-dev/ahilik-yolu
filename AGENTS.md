@@ -16,7 +16,7 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 
 ## Komutlar (Docker yok; bağımlılık da yok, host'a paket kurma)
 - Ayağa kaldır: `python3 -m http.server 8000` (proje kökünden)
-- Hızlı ölçüm: `make olc` · Tam kapı (bitti demeden önce): `make qa` → 0 fail
+- Hızlı ölçüm: `make olc` · Tam kapı (bitti demeden önce): `make qa` = sözdizimi + tüm testler (gerçek sayı basar) + varsa tarayıcı testi → 0 fail
 - Tek test: `node --test --test-name-pattern "<ad>" test/`
 - UI kontrolü: headless Brave + CDP ile ekran görüntüsü (`--headless=new --remote-debugging-port=<port> --use-angle=swiftshader --enable-unsafe-swiftshader`); `--screenshot` bayrağı takılıyor, CDP `Page.captureScreenshot` kullan. Görüntüler bakılınca silinir.
 - Sürüm çıkarken `index.html` importmap'teki `?v=` değerini artır (tarayıcı önbelleği).
@@ -104,8 +104,8 @@ Bunlar dışında sorma; port doluysa boş port seç ve söyle.
 ## Tekrar eden hatalar
 <!-- Ajan bir hatayı tekrarlayınca buraya: tarih — hata — doğrusu. En fazla 15 madde; eskiyen hook'a veya teste taşınır. -->
 - 2026-10-09 — Ana canvas'ın ebeveyni boyutsuzdu, sahne şerit olarak render edildi — canvas `#stage` (position:fixed; inset:0) içinde durur, scene ResizeObserver'ı ebeveyni ölçer.
-- 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı (test yanıltıcı) — her JS/CSS değişikliğinden sonra importmap `?v=` artırılır, sonra test edilir.
+- 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı — `test/version.test.js` zorlar; her JS/CSS değişikliğinden sonra `?v=` ve `sw.js` V birlikte artırılır.
 - 2026-10-09 — Alt ajan commit'i git hook ile engelli; worktree ajanları değişikliği bırakır, ana oturum commit + merge eder.
-- 2026-10-09 — `<script type=module src=main.js>` importmap'i atlıyor, main.js versiyonsuz kaldı ve SW eski kopyayı verdi — giriş modülü inline `import "./src/main.js"` ile yüklenir; `?v=` index.html ve `sw.js` V ile birlikte artırılır.
+- 2026-10-09 — giriş modülü importmap'i atlayıp sürümsüz yüklendi — `test/version.test.js` zorlar (giriş inline `import("./src/main.js")`).
 - 2026-10-09 — v10–v12 ve spec doğrudan `main`'e push edildi, PR açılmadı (kullanıcı sordu) — her değişiklik dal + PR + ikinci model review ile gider; `main`'e push = Pages deploy.
 - 2026-10-09 — UI test'i `__ahilik.act` ile aksiyonu doğrudan verdi, düğmenin yanlış `legal` indeksini göremedi (review yakaladı) — UI akışı en az bir kez gerçek DOM düğmesine tıklanarak doğrulanır. `codex exec review` bu hesapta model hatası veriyor; yedek `opencode run -m deepseek/deepseek-v4-pro`, diff dosyası proje içinde (`.wt/`) olmalı.
