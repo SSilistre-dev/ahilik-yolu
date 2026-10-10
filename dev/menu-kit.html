@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Menü kiti galerisi</title><link rel="stylesheet" href="../style.css">
+<style>html,body{margin:0;height:100%;overflow:hidden;background:var(--bg)}#frame{position:relative;height:100%;transform:translateZ(0);margin:0 auto}</style></head>
+<body><div id="frame"></div>
+<script type="module">
+// ?w=360|390|1280 genişlik, ?text=large yazı ölçeği 1.2. window.__kit.check() ölçüm döker.
+import { applyTokens, createMenu } from '../src/menu.js';
+import { PLAYER_COLORS, ILKE_IDS, ILKELER } from '../src/data.js';
+const q = new URLSearchParams(location.search);
+const frame = document.getElementById('frame');
+if (q.get('w')) frame.style.width = q.get('w') + 'px';
+if (q.get('text') === 'large') document.documentElement.dataset.text = 'large';
+applyTokens();
+const log = [];
+const menu = createMenu(frame, { sfx: { play: n => log.push('sfx:' + n) }, buzz: p => log.push('buzz:' + JSON.stringify(p)) });
+const sw = (id, on, dis = '') => `<button type="button" class="mn-switch" role="switch" aria-checked="${on}" aria-label="${id}" ${dis}></button>`;
+menu.define('gallery', () => ({
+  html: `<header class="mn-head"><button type="button" class="mn-back" aria-label="Geri">&#8592;</button><h1>Menü kiti</h1></header>
+  <div class="mn-body">
+    <div class="mn-card"><h2>Düğmeler</h2><div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="ay-btn">Normal</button><button class="ay-btn primary">Birincil</button><button class="ay-btn danger">Tehlike</button>
+      <button class="ay-btn sel">Seçili</button><button class="ay-btn ghost">Hayalet</button><button class="ay-btn" disabled>Devre dışı</button>
+      <button class="ay-btn big primary" id="focus">Odaklı</button></div></div>
+    <div class="mn-card"><h2>Satırlar</h2>
+      <div class="mn-row"><span>Ses<small>Efektleri aç ya da kapat</small></span>${sw('Ses', true)}</div>
+      <div class="mn-row"><span>Titreşim</span>${sw('Titreşim', false)}</div>
+      <div class="mn-row"><span>Müzik (devre dışı)</span>${sw('Müzik', true, 'disabled')}</div></div>
+    <div class="mn-card"><h2>Rozet ve renkler</h2><span class="mn-badge">YENİ</span>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">${PLAYER_COLORS.map((_, i) => `<i style="width:28px;height:28px;border-radius:50%;background:var(--pc-${i})"></i>`).join('')}
+      ${ILKE_IDS.map(id => `<i title="${ILKELER[id].name}" style="width:28px;height:28px;border-radius:8px;background:var(--il-${id})"></i>`).join('')}</div></div>
+    <div class="mn-card mn-empty"><span class="ico">&#127922;</span>Henüz kayıtlı oyun yok.</div>
+    <div class="mn-card"><p class="mn-error" role="alert">Oda bulunamadı. Kodu kontrol et.</p></div>
+  </div>
+  <div class="mn-foot"><button class="ay-btn big primary" id="next">İleri: ikinci ekran</button>
+    <button class="ay-btn big danger" id="del">Sil</button><button class="ay-btn big ghost" id="toast">Toast</button></div>`,
+  onMount(el) {
+    el.querySelectorAll('.mn-switch').forEach(b => b.onclick = () => { b.setAttribute('aria-checked', b.getAttribute('aria-checked') !== 'true'); menu.feedback('tap'); });
+    el.querySelector('.mn-back').onclick = () => menu.toast('Geri: ana ekran yok');
+    el.querySelector('#next').onclick = () => { menu.feedback('go'); menu.show('second', {}, 'forward'); };
+    el.querySelector('#del').onclick = async e => { window.__last = await menu.confirm({ title: 'Silinsin mi?', text: 'Bu işlem geri alınamaz.', ok: 'Evet, sil', cancel: 'Vazgeç', danger: true }); };
+    el.querySelector('#toast').onclick = () => menu.toast('Kaydedildi');
+  } }));
+menu.define('second', () => ({
+  html: `<header class="mn-head"><button type="button" class="mn-back" aria-label="Geri">&#8592;</button><h1>İkinci ekran</h1></header>
+  <div class="mn-body"><div class="mn-card"><p>Geri düğmesi tersine geçiş yapar.</p></div></div>
+  <div class="mn-foot"><button class="ay-btn big" id="rep">Değiştir (replace)</button></div>`,
+  onMount(el) {
+    el.querySelector('.mn-back').onclick = () => { menu.feedback('back'); menu.show('gallery', {}, 'back'); };
+    el.querySelector('#rep').onclick = () => menu.show('gallery', {}, 'replace');
+  } }));
+menu.show('gallery');
+window.__kit = { menu, log, check() {
+  const h = s => [...document.querySelectorAll(s)].map(e => Math.round(e.getBoundingClientRect().height));
+  const fs = [...document.querySelectorAll('.mn-root *')].filter(e => [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()))
+    .map(e => parseFloat(getComputedStyle(e).fontSize));
+  const b = document.querySelector('.mn-body');
+  return { back: h('.mn-back'), sw: h('.mn-switch'), row: h('.mn-row'), btn: h('.ay-btn'), minFont: Math.min(...fs),
+    overflowX: document.documentElement.scrollWidth > innerWidth, bodyOverflowX: b.scrollWidth > b.clientWidth, iw: innerWidth }; } };
+</script></body></html>
