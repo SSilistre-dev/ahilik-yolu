@@ -10,6 +10,7 @@ import { createSfx } from './sfx.js';
 import { goalTile, pathTo } from './path.js';
 import { CARDS } from './data.js';
 import { initPwa } from './pwa.js';
+import { createRouter } from './router.js';
 
 const BOT_DELAY = 700;
 const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
@@ -67,7 +68,7 @@ async function start(opts) {
 }
 
 function act(action, isBot) {
-  if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return ui.showStart(start); }
+  if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return router.go('menu', {}, { replace: true }); }
   if (action.type === 'undo') {
     if (isBot || !undoStack.length) return;
     sfx.play('click'); buzz(10);
@@ -155,9 +156,17 @@ if (mute) {
   if (side) { mute.className = "ay-round ay-p"; side.prepend(mute); }
 }
 
-ui.showStart(start);
+// Ekran yönlendirici: şimdilik menu (başlangıç ekranı) ve game. Duraklat menüsü yok (AHI-064):
+// oyundayken geri tuşu pause'a gider, pause hemen geri döner; yani geri tuşu oyunda etkisizdir.
+const router = createRouter({ guards: { game: () => started, pause: () => started } });
+router.onChange(({ name }) => {
+  if (name === 'menu') { clearTimeout(botTimer); ui.showStart(opts => { start(opts); router.go('game'); }); }
+  else if (name === 'pause') queueMicrotask(() => router.back());
+});
+addEventListener('keydown', e => { if (e.key === 'Escape' && !e.target.closest?.('input,textarea')) router.back(); });
+router.start();
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
 
 initPwa();

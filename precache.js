@@ -10,6 +10,7 @@ self.SHELL_FILES = [
   "src/main.js",
   "src/path.js",
   "src/pwa.js",
+  "src/router.js",
   "src/scene.js",
   "src/sfx.js",
   "src/store.js",
