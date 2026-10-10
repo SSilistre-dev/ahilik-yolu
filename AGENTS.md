@@ -94,7 +94,7 @@ ANA OTURUMA İSTEK: <kapsam dışı gereken değişiklik varsa>
 - Anahtarlar macOS Keychain'de: `security find-generic-password -s <servis> -w`. Kullanıcıya sormadan önce
   Keychain'e VE proje dizinine (FTP/deploy bilgi dosyası, `.env`) bak.
 - Değeri ekrana/loga/commit'e basma. Repo'da yalnız `.env.example` + placeholder.
-- Dokploy: `~/.local/bin/dokploy-api` (panel `sw.ssilistre.dev`). Cloudflare: wrangler login hazır.
+- Dağıtım (Dokploy) ve DNS erişim bilgisi yereldir (repo dışı ajan dosyası). Repoya, issue'lara ve PR metnine yazılmaz.
 
 ## Onay gereken (geri dönüşü olmayan)
 Force push · veri/DB silme · prod migration rollback · yeni canlı ortam açma.
