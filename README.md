@@ -4,6 +4,8 @@ Ahiliğin 7 ilkesi üzerine kurulu aile ticaret kutu oyununun (İGİAD) tarayıc
 
 Tanıtım videosu: https://www.youtube.com/watch?v=VQYzfQjJEro
 
+**Dijital uyarlama: [ssilistre.dev](https://ssilistre.dev)** tarafından tasarlandı ve geliştirildi. Oyun tasarımı ve basılı sanat İGİAD'a aittir (bkz. `assets/LICENSE-ART.md`).
+
 ## Çalıştırma
 
 Build adımı ve bağımlılık yok. Herhangi bir statik sunucu yeterli:
@@ -31,5 +33,13 @@ node --test test/
 | `src/ui.js`, `style.css` | HTML arayüz katmanı |
 | `src/main.js` | Entegrasyon |
 | `dev/` | Sahne ve UI için fixture önizleme sayfaları |
+| `docs/ARCHITECTURE.md` | Sistem mimarisi: çevrimiçi oda sunucusu, protokol, ekran akışı |
+| `TASKS.md` | Denetim bulguları ve görev listesi |
 
 Sürüm çıkarken `index.html` içindeki importmap'te `?v=` değerini artırın; aksi halde tarayıcı önbelleği eski modülleri yükleyebilir.
+
+## Künye
+
+- Dijital uyarlama, yazılım ve oyun deneyimi tasarımı: **ssilistre.dev** — https://ssilistre.dev
+- Oyun tasarımı: Ahmet Ercan · Yayıncı: İGİAD
+- 3B modeller ve sesler: CC0 (KayKit, Kenney, Quaternius), ayrıntı `assets/LICENSES.md`

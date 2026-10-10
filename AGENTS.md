@@ -9,7 +9,10 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 - Stack: build'siz statik ES modules, three.js 0.160.0 importmap (jsDelivr), testler `node:test`. npm/paket yok.
 - Canlı: TODO: henüz yok (GitHub Pages adayı) · repo: github.com/SSilistre-dev/ahilik-yolu
 - Bu projeye YABANCI, önerme: bundler (Vite/webpack), npm bağımlılığı, framework (React vb.), OrbitControls.
-- Kurallar ve dondurulmuş sözleşme: `SPEC.md`. Sözleşmeyi değiştiren iş önce SPEC'i günceller.
+- Kurallar ve dondurulmuş sözleşme: `SPEC.md`. Sözleşmeyi değiştiren iş önce SPEC'i günceller. Mimari: `docs/ARCHITECTURE.md`.
+- Künye: proje **ssilistre.dev** tarafından geliştirilir (README, oyun içi Hakkında, `<meta name="author">`).
+  Repoda, commit mesajında ve PR metninde hiçbir yapay zekâ aracının adı, imzası ya da ortak yazar (co-author) satırı geçmez (kullanıcı kararı, 2026-10-10). `test/brand.test.js` zorlar.
+  Ajan araç dosyaları yereldir, repoya girmez (`.git/info/exclude`).
 
 ## Komutlar (Docker yok; bağımlılık da yok, host'a paket kurma)
 - Ayağa kaldır: `python3 -m http.server 8000` (proje kökünden)

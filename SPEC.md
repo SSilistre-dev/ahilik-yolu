@@ -213,7 +213,7 @@ Animasyon önceki ve yeni state farkından türetilir.
   - `over` → `win` sesi
   - Aktif insan oyuncunun piyonu `focus` olarak verilir.
 
-## v3: UX sözleşmesi (2026-10-09)
+## v3: UX sözleşmesi (UX denetimi, 2026-10-09)
 
 Hedef: 7 yaşındaki bir çocuk "nereye gideceğim, şimdi ne yapacağım" sorusunu sormadan oynayabilmeli.
 
