@@ -597,6 +597,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
         <div class="ay-field">Oyuncu sayısı</div>
         <div class="ay-toggles five">${[2, 3, 4, 5, 6].map(k => `<button class="ay-tg ${k === n ? 'sel' : ''}" data-n="${k}"><b>${k}</b><small>kişi</small></button>`).join('')}</div>
         <div class="ay-players">${rows}</div>
+        <div class="ay-ask ay-dirnote" hidden>Masada kural kitabındaki gibi sağdan sola oturun. Sıra bu listedeki gibi gider.</div>
         <div class="ay-field">İlk kim başlar? <small>(yaşı en küçük)</small></div>
         <div class="ay-starters"></div>
         <div class="ay-warn" hidden>En az bir insan oyuncu olmalı.</div>
@@ -615,6 +616,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
           `<button type="button" class="ay-st ${i === first ? 'sel' : ''}" data-s="${i}" style="--pc:${pcolor(i)}"><i class="dot"></i>${esc(nameOf(i))}</button>`).join('');
         const ok = Array.from({ length: n }, (_, i) => i).some(i => !isBot(i));
         startEl.querySelector('.ay-warn').hidden = ok;
+        startEl.querySelector('.ay-dirnote').hidden = Array.from({ length: n }, (_, i) => i).filter(i => !isBot(i)).length < 2;
         startEl.querySelector('[data-go]').disabled = !ok;
       };
       startEl.addEventListener('input', paint);
