@@ -326,6 +326,39 @@ state += {
 
 Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
 
+- **Takas koşulu (kural 25, s.4).** Kitap takası "ihtiyacı olan yol kartı yoksa" şartına bağlar. Dijitalde aktif oyuncu `!moveDone` iken,
+  ilerleyebiliyor olsa bile takas teklif edebilir. Bilinçli gevşetmedir: "ihtiyaç" öznel, karşı taraf reddedebilir, aynı tur aynı (oyuncu, tür)
+  teklifi tekrarlanamaz. Testle sabitlendi: `test/takas-gevsetme.test.js`.
+- **Sıra yönü (s.3).** Kitap "sağdan sola" der. Dijitalde koltuk sırası oyuncu listesi sırasıdır (0 → 1 → ... → 0); başlangıç ekranı
+  sırayı bu listeyle gösterir. Yön yorumlanmaz (saat yönü mü tersi mi kitapta belirtilmemiş); 2+ insan seçiliyken başlangıç ekranı
+  kitaptaki cümleyi hatırlatan tek satır gösterir.
+- **Bitiş koşulları, ölçüm (bilgi).** Bot oyunlarında (2000 oyun/oyuncu sayısı, hepsi bot, `startIdx = seed % n`) bitişi ilk tetikleyen:
+
+  | Oyuncu | Ahlak destesi | Ticaret destesi | Ödül havuzu |
+  |---|---|---|---|
+  | 2 | 1981 | 19 | 0 |
+  | 3 | 1951 | 49 | 0 |
+  | 4 | 1918 | 82 | 0 |
+  | 5 | 1846 | 154 | 0 |
+  | 6 | 1767 | 230 | 3 |
+
+  "Ödül havuzları boşaldı" koşulu doğru çalışır (`test/game.test.js`, "all awards empty") ama pratikte nadirdir; kural kitabıyla aynıdır,
+  değiştirilmez. İnsanlı oyunda oran farklı olabilir, ölçülmedi.
+- **Rozet kasası (kural 29, s.2).** Kutuda 36 gümüş ve 16 altın rozet vardır. Dijitalde kasa sınırsızdır; kitap tükenme için kural koymadığından
+  modellenmez (puan yalnız toplam rozet sayısıdır, gümüş/altın gösterimdir). Bot simülasyonunda (2000 oyun/oyuncu sayısı, 5'li yığınlar altına
+  çevrilmiş varsayımıyla) eşzamanlı en çok rozet:
+
+  | Oyuncu | Gümüş (ödül alanı hariç) | Altın | Gümüş (ödül alanı dahil) |
+  |---|---|---|---|
+  | 2 | 31 | 8 | 59 |
+  | 3 | 34 | 8 | 62 |
+  | 4 | 37 | 10 | 62 |
+  | 5 | 39 | 10 | 66 |
+  | 6 | 44 | 11 | 65 |
+
+  Altın 16 sınırının altında kalır; gümüş sınırı (36) 4+ oyuncuda aşar, yani fiziksel kutu da bu oyunlarda sınırı zorlar.
+  Varsayım: ödül alanı rozetleri gümüştür.
+
 ## v5: Çevrimiçi sözleşme (2026-10-10)
 
 Kaynak: `docs/ARCHITECTURE.md` (onaylı). Bu bölüm v1–v4 ile çelişirse v5 geçerlidir. Kural davranışı değişmez; v5 yalnız "kim neyi görür" ve "oyun makineler arasında nasıl taşınır" sözleşmesidir.
