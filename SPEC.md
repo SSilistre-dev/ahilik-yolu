@@ -60,16 +60,17 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
    - Her yol kartı, piyonu 8 komşu kareden ilkesi eşleşen birine götürür.
    - Kapalı kareye girilemez. Piyonlar üst üste durabilir.
    - Girilen karedeki rozetler alınır.
-   - Görev şehrine komşu bir kareye gelen oyuncu şehre varmış sayılır (bugünkü kod: anında; v5'te "Şehre gir" aksiyonuna dönecek, bkz. "v5 kural kararları", AHI-004). Piyon şehre geçer,
-     ticaret kartı kazanılır ve yeni görev çekilir.
-     Yeni kart bulunduğu şehre aitse o görev de anında tamamlanır.
-     Ticaret tamamlanınca hareket biter.
+   - Görev şehrine komşu bir kareye gelen oyuncu şehre `enterCity` aksiyonuyla girer: piyon şehre geçer,
+     ticaret kartı kazanılır ve yeni görev çekilir (AHI-004, kural 20; bkz. v6).
+     Yeni kart bulunduğu şehre aitse o görev de anında tamamlanır. Ticaret tamamlanınca hareket biter.
+   - Oyuncu girmek yerine kartlarıyla yolu uzatıp rozet toplayabilir (kural 3–4). Tur sonunda hâlâ görev şehrine
+     komşu karedeyse ticaret otomatik tamamlanır (kitap s.4 "el sonunda").
 3. **Tur sonu:** el 6'ya tamamlanır. Yol destesi biterse ıskarta karıştırılır.
 
 ### Ara hamleler (yalnız aktif oyuncu yapabilir)
 
 - **Takas:** başka bir oyuncuya teklif; karşı taraf kabul ya da ret eder (v4).
-- **Kapalı yolu açma:** o ilkeden 4 kart verilir. Aktif oyuncu 1–4 kart koyar, kalanı koltuk sırasıyla diğer oyunculara sorulur (v4). 4 kart ve olumsuz kart ıskartaya gider.
+- **Kapalı yolu açma:** o ilkeden 4 kart verilir. Aktif oyuncu 0–4 kart koyar (hangi kartları vereceğini kendi seçer), kalanı koltuk sırasıyla diğer oyunculara sorulur (v4, v6). 4 kart ve olumsuz kart ıskartaya gider.
   Ödül rozetleri, verilen kart sayısına göre paylaştırılır.
 - **Pas:** oyuncu tüm elini atar, 6 yeni kart çeker ve sırası biter.
 
@@ -104,16 +105,16 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
   aynı cihazda birden çok insan varsa "Telefonu X'e ver" perdesi çıkar (v4).
 - Bot basittir: göreve BFS ile en kısa `move` yapar. Yazıyı okur, takas teklif eder, takas ve yol katkısına cevap verir,
   kapalı yolu açmaya girişir; hamle yoksa `pass` eder (v4, `src/bot.js`).
-- Kargo kartı yalnız `phase==='move' && movesThisTurn===0` iken oynanır.
-  Ahlak kartı açmak hamle sayılmaz. Kargo görev şehrine uçarsa ticaret tamamlanır
-  (AHI-005 ile netleşecek: kullanıcı kararı "ahlak kartından önce de oynanabilir", bkz. v5 kural kararları).
+- Kargo kartı `phase==='ahlak'` ya da `phase==='move'` iken, `movesThisTurn===0` ve `!moveDone` ise oynanır
+  (AHI-005, bkz. v6). Ahlak fazında oynanırsa o tur ahlak kartı açılmaz. Ahlak kartı açmak `movesThisTurn`'i artırmaz.
+  Kargo görev şehrine uçarsa ticaret tamamlanır.
 - Ahi Evran jokeri hareket, yol açma ve takasta her ilke yerine geçer.
-- `openRoad {tile, cards}`: aktif oyuncu 1–4 uygun kartını (joker dahil) koyar. 4'e ulaşmazsa diğer oyunculara
-  koltuk sırasıyla sorulur; her biri `contribute {cards}` ile 0..eksik kart verir. Ayrıntı v4 bölümündedir.
-  Ödül 1 kart = 1 rozettir ve havuzdan verilir. Kartsız başlatma ve tur sınırı: AHI-008, v5 kural kararları.
+- `openRoad {tile, cards}`: aktif oyuncu 0–4 uygun kartını (joker dahil, istediği kombinasyon) koyar. 4'e ulaşmazsa diğer oyunculara
+  koltuk sırasıyla sorulur; her biri `contribute {cards}` ile 0..eksik kart verir. Ayrıntı v4 ve v6 bölümlerindedir.
+  Ödül 1 kart = 1 rozettir ve havuzdan verilir. Kartsız başlatma ve tur sınırı: AHI-008, v6.
 - Ahlak kartıyla konan rozetler kasadan gelir (sınırsız). Ödül havuzu yalnız yol açınca boşalır.
-- Şehir kareleri hamle hedefi değildir. Görev şehrine komşu kareye basılınca piyon şehre geçer
-  (bugünkü kod: otomatik; AHI-004 ile "Şehre gir" aksiyonuna dönecek, bkz. v5 kural kararları).
+- Şehir kareleri hamle hedefi değildir. Görev şehrine komşu kareye basınca piyon şehre `enterCity` aksiyonuyla geçer
+  ya da tur sonunda otomatik geçer (AHI-004, bkz. v6).
 - Elin 6'ya tamamlanması tur başında (`refill`, kural 26) ve `endTurn`/`pass` içinde otomatik yapılır. Ayrı `refill` aksiyonu yok.
 - Grafik v2'de değişti: basılı ilke görselleri (JPG) ve glTF modeller kullanılır (bkz. v2). Prosedürel CanvasTexture yalnız yedektir.
   Kartlar, el ve log HTML'dir.
@@ -155,14 +156,14 @@ state = {
 - `score(state) -> [{ pIdx, money, badges, mult, total, rank }]` (rank'e göre sıralı)
 
 Aksiyonlar:
-`{type:'drawAhlak'}` · `{type:'closeTile',tile}` · `{type:'move',card,tile}` · `{type:'kargo',card,city}` · `{type:'readText'}` · `{type:'offerTrade',withPlayer,give,want}` · `{type:'respondTrade',accept,card?}` · `{type:'openRoad',tile,cards}` · `{type:'contribute',cards}` · `{type:'pass'}` · `{type:'endTurn'}`
+`{type:'drawAhlak'}` · `{type:'closeTile',tile}` · `{type:'move',card,tile}` · `{type:'kargo',card,city}` · `{type:'readText'}` · `{type:'offerTrade',withPlayer,give,want}` · `{type:'respondTrade',accept,card?}` · `{type:'openRoad',tile,cards}` · `{type:'contribute',cards}` · `{type:'pass'}` · `{type:'endTurn'}` · `{type:'enterCity'}`
 
 `undo` ve `newGame` motor aksiyonu değildir; glue katmanı (`main.js`) işler. Aksiyonların koşulları v4 bölümündedir.
 
 ### Event listesi
 
 `game.js`'in ürettiği tüm event tipleri (alanlar `pIdx` dışında tip başına):
-`ahlak {pIdx,card,ilke}` · `badgePlaced {tile}` · `badges {pIdx,tile,n}` · `close {pIdx,tile,paid}` · `endgame` · `endTurn {pIdx}` · `kargo {pIdx,city}` · `move {pIdx,card,tile}` · `openRoad {pIdx,tile,contrib}` · `over` · `pass {pIdx}` · `read {pIdx}` · `refill {pIdx,n}` · `roadAsk {tile,ask,need}` · `roadFailed {tile}` · `swap {pIdx,withPlayer,give,want}` · `task {pIdx,card?}` · `text {pIdx}` · `trade {pIdx,card,city,value}` · `tradeDeclined {pIdx,from,want}` · `tradeOffer {from,to,give,want}`
+`ahlak {pIdx,card,ilke}` · `badgePlaced {tile}` · `badges {pIdx,tile,n}` · `close {pIdx,tile,paid}` · `endgame` · `endTurn {pIdx}` · `kargo {pIdx,city}` · `move {pIdx,card,tile}` · `nearCity {pIdx,city}` · `openRoad {pIdx,tile,contrib}` · `over` · `pass {pIdx}` · `read {pIdx}` · `refill {pIdx,n}` · `roadAsk {tile,ask,need}` · `roadFailed {tile}` · `swap {pIdx,withPlayer,give,want}` · `task {pIdx,card?}` · `text {pIdx}` · `trade {pIdx,card,city,value}` · `tradeDeclined {pIdx,from,want}` · `tradeOffer {from,to,give,want}`
 
 `src/bot.js`: `botAction(state) -> Action`.
 
@@ -259,11 +260,12 @@ Kaynak: `Kural Kitabı - Talha temmuz25.pdf` (12 sayfa). Bu bölüm "Demo kararl
 Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesindeki numaralardır.
 
 ### Kullanıcı kararları (2026-10-09)
-- Görev şehrine varıp ticareti tamamlayan oyuncunun o turki hareketi biter (`moveDone`). Kalan kartlarla devam edemez.
+- Görev şehrine girip ticareti tamamlayan oyuncunun o turki hareketi biter (`moveDone`). Kalan kartlarla devam edemez.
+  (v6: şehre girmek `enterCity` ile ya da tur sonunda otomatik olur; komşu kareye gelmek hareketi bitirmez.)
 - Ahi Evran jokeri kapalı yolu açarken 4 karttan biri yerine sayılır.
-- **AÇIK SORU (kullanıcı kararı v5 kural kararları'nda, AHI-005):** Kargo Uçağı ahlak kartından önce mi oynanır?
-  Kitapçık "sırasının başında, hiçbir hamle yapmamış olmalı" diyor; ahlak kartı açmak da 1. hamle sayılıyor.
-  Cevap gelene kadar mevcut davranış kalır: ahlak kartından sonra, piyon hareket etmeden.
+- **KARAR (kullanıcı, 2026-10-10, AHI-005, v6):** Kargo Uçağı ahlak kartından önce de oynanır. Kitapçık "sırasının başında, hiçbir hamle
+  yapmamış olmalı" diyor; ahlak kartı açılmadan önce oynanırsa o tur ahlak kartı açılmaz. Ahlak kartından sonra, piyon hareket etmeden
+  oynanması da sürer. Tasarımcı yanıtı gelirse ayrı issue.
 
 ### Kurallar → davranış
 - **Oyuncu sayısı:** 2–6 (kitapçık: en iyi 4, 5–6 esnetilmiş kural). `PLAYER_COLORS` 6 renk.
@@ -281,7 +283,7 @@ Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesi
 - **Takas (kural 25, Kart Takası Hamlesi):** yalnız aktif oyuncu teklif eder. Karşı taraf kabul ya da ret eder.
   Aktif oyuncu karşının elini görmez: istenen şey kart id'si değil, türdür (`want`: ilke id'si, `'ahievran'` veya `'kargo'`).
   Aynı tur içinde aynı oyuncuya aynı `want` için reddedilmiş teklif tekrarlanamaz (`s.declined`).
-- **Kapalı yolu açma (kural 16–17):** aktif oyuncu kendi elinden 1–4 uygun kart koyar (o ilke ya da joker).
+- **Kapalı yolu açma (kural 16–17):** aktif oyuncu kendi elinden 0–4 uygun kart koyar (o ilke ya da joker; v6: kartları kendi seçer, kartsız başlatabilir).
   4'e ulaşmazsa diğer oyunculara koltuk sırasıyla (aktiften sonraki ilk oyuncudan başlayarak) sorulur. Her biri 0..eksik kadar kart verir.
   Toplam 4 olunca yol açılır: 4 kart ve olumsuz ahlak kartı ıskartaya gider, herkes verdiği kart sayısı kadar ödül rozeti alır.
   Herkese sorulduğu hâlde 4 olmazsa yol açılmaz, kimse kart kaybetmez (event `roadFailed`).
@@ -307,7 +309,7 @@ state += {
   - `{type:'offerTrade', withPlayer, give, want}`: aktif oyuncu; `move` fazı, `!moveDone`.
   - `{type:'respondTrade', accept:true, card}` / `{type:'respondTrade', accept:false}`: `pending.to`.
     `card`, `want` türünde olmalı. Kabulde event `swap`, retde event `tradeDeclined {pIdx:to, from, want}`.
-  - `{type:'openRoad', tile, cards:[cardId]}`: aktif oyuncu, 1–4 uygun kart.
+  - `{type:'openRoad', tile, cards:[cardId]}`: aktif oyuncu, 0–4 uygun kart (v6).
   - `{type:'contribute', cards:[cardId]}`: `pending.ask`; `[]` = katılmıyorum. Uygun ve en çok `need` kart.
 - Yeni event'ler: `refill {pIdx,n}`, `tradeOffer {from,to,give,want}`, `tradeDeclined`, `roadAsk {tile,ask,need}`, `roadFailed {tile}`.
   `openRoad` event'inin `contrib` alanı `[{pIdx, cards}]` olarak kalır.
@@ -321,6 +323,41 @@ state += {
 - Uygulamada eklenen alanlar: `offersThisTurn` ve `roadTries` (tur içi sayaçlar, `endTurn`'de 0; bot en çok 2 teklif, 1 yol denemesi yapar).
   `refill` event'i tur sonunda da çıkar. `game.js` ayrıca `WANT_KINDS` (9 tür) ve `wantKind(cardId)` export eder.
   Kendi türünü isteyen takas teklifi yasal değildir.
+
+## v6: S2 kural uyumu (2026-10-10)
+
+Kullanıcı kararı (2026-10-10): kural kitabına göre uygula. Bu bölüm v1–v5 ile çelişirse v6 geçerlidir.
+
+### Şehre gir (AHI-004, kural 3–4, 20; kitap s.4)
+- `nearGoal(p)`: `p.task` var ve piyonun komşu karelerinden biri görev şehrinin karesi.
+- `move` komşu kareye girince ticareti tamamlamaz; yalnız `nearCity {pIdx,city}` event'i üretir. Hareket bitmez.
+- `{type:'enterCity'}`: `phase==='move'`, `!moveDone` ve `nearGoal` iken yasal; `legalActions`'ta `readText`'ten sonra, `move`'lardan önce gelir.
+  Ticaret tamamlanır, yeni görev çekilir (aynı şehirse zincirleme), `moveDone=true`. Sonra yalnız `readText` ve `endTurn` yasaldır.
+  Komşu değilken `apply` fırlatır.
+- `endTurn`, `pass` ve `kargo` tur kapanmadan önce `!moveDone && nearGoal` ise ticareti otomatik tamamlar.
+  Piyon yoldan uzaklaşıp başka karede turu bitirirse teslim olmaz; risk oyuncunundur.
+- Geri Al: `enterCity` geri alınamaz; komşu kareye `move` geri alınabilir (glue).
+
+### Okuma fırsatı (AHI-007, kural 27/3)
+- Okuma fırsatı (`pendingText`) yalnız sonraki `move`'da ve tur sonunda kapanır; ara hamleler (takas, yol açma, katkı cevabı, `enterCity`) onu silmez.
+  Tek yuva: iki yazılı kartla art arda hareket eden oyuncu ilkini okumadıysa kaybeder.
+
+### Yol açmada serbest kart seçimi (AHI-006, kural 16–17)
+- `legalActions`, `openRoad` ve `contribute` için kartları **tür bazında** tüm kombinasyonlarla sunar. Tür: düz ilke kartı, yazılı ilke kartı (`ilke*`), joker.
+  Aynı türden kartlar birbirinin yerine geçer; her tür için elin ilk kartları seçilir.
+- Her boyutta ilk varyant eski varsayılandır (ilke kartları el sırasıyla, jokerler en sonda); varyantlar boyuta göre artan sıralıdır. `cards` dizisi bu sırayla dizilir.
+- `contribute`: `[]` önce, ardından en çok `pending.need` kartlık varyantlar. Aksiyon şekilleri değişmedi; `apply` doğrulaması serbest alt kümeyi zaten kabul eder.
+- UI kart seçici gösterir; bot varsayılan (en çok kartlı, ilk) varyantı seçer.
+
+### Kargo ahlak kartından önce (AHI-005, kitap s.5)
+- `kargo`, `phase==='ahlak'` iken de yasaldır (`movesThisTurn===0`, `!moveDone`, elde kargo kartı). Ahlak fazında oynanırsa ahlak destesine dokunulmaz,
+  o tur ahlak kartı açılmaz ve sıra biter. Ahlak kartı açıldıktan sonra, piyon hareket etmeden oynanması da sürer (`phase==='move'`).
+  Olumsuz kart açılıp `close` fazındayken oynanamaz.
+
+### Kartsız yol çağrısı ve tur sınırı (AHI-008, kural 16–17)
+- `openRoad {tile, cards:[]}` yasaldır (her kapalı kare için ilk varyant). Kartsız başlatan rozet almaz, kart verenler paylaşır; diğer oyunculara koltuk sırasıyla 4 kart sorulur.
+  Hepsi reddederse ya da toplam 4'e ulaşmazsa `roadFailed`, kimse kart kaybetmez.
+- Tur başına en çok 2 yol çağrısı: `roadTries < 2` iken `openRoad` yasaldır; `apply` aksi hâlde fırlatır. Kitapta yok; çevrimiçi rahatsız etmeyi önleyen dijital önlemdir (insan ve bot için aynı).
 
 ## Bilinçli sapmalar ve notlar (kitap ↔ dijital)
 
@@ -427,14 +464,9 @@ Alfabe `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 karakter), uzunluk 6 (887 503 681 k
 ### HTTP
 `POST /api/rooms` -> `201 {code}` (IP başına dakikada 10; aşımda `429 {error:'rate'}`; kod çakışması 5 denemede çözülmezse ya da toplam oda üst sınırı (500) dolduysa `503 {error:'busy'}`), `GET /api/rooms/<KOD>` -> `200 {exists, phase, humans, capacity, joinable}` (kod biçimi geçersizse `400 {error:'badCode'}`, dakikada 60 sorguyu aşınca `429`), `GET /api/health` -> `200 {ok:true, ...}` (N20 `startedAt`, N22 süreç metriği alanlarını ekler; istemciler yalnız `ok` alanına bağlanır). Tüm cevaplar `cache-control: no-store`. İstemci IP'si ters vekilin `X-Forwarded-For` başlığındaki en sağdaki girdidir (yalnız hız sınırı için, bellekte).
 
-### v5 kural kararları (planlanan)
+### v5 kural kararları
 
-Kullanıcı kararı (2026-10-10): aşağıdaki dört kural kural kitabına göre uygulanacaktır. **Hepsi planlanandır**: bu belge yazıldığında motor (`src/game.js`) değişmemiştir; her biri kendi issue'sunda koda geçer ve geçince bu başlıktaki "planlanan" işareti kalkar. Kod ile bu bölüm çeliştiği sürece kod geçerlidir.
+Kullanıcı kararı (2026-10-10): şu üç kural kural kitabına göre uygulandı; ayrıntı ve koşullar "v6: S2 kural uyumu" bölümündedir (AHI-004, AHI-005, AHI-008).
+Kalan madde planlanandır.
 
-- **Şehre gir (AHI-004, planlanan):** görev şehrine komşu kareye gelmek ticareti anında tamamlamaz; `move` yalnız `nearCity {pIdx,city}` event'i üretir.
-  Yeni aksiyon `{type:'enterCity'}`: `phase==='move'`, `!moveDone` ve piyon görev şehrine komşuyken yasaldır; ticaret tamamlanır, yeni görev çekilir (aynı şehirse zincirleme), `moveDone=true`.
-  Oyuncu girmek yerine kartlarıyla yolu uzatıp rozet toplayabilir. Tur sonunda (`endTurn`, `pass`, `kargo`) hâlâ görev şehrine komşu karedeyse ticaret otomatik tamamlanır (kural 4, kitap s.4).
-- **Kargo ahlak kartından önce de oynanır (AHI-005, planlanan):** `kargo` yalnız `phase==='move'` ile sınırlı kalmaz; `phase==='ahlak'` iken de yasaldır (`movesThisTurn===0`, `!moveDone`). Ahlak fazında oynanırsa ahlak destesine dokunulmaz ve sıra biter. Ahlak kartından sonra, piyon hareket etmeden oynanması da sürer.
-- **Kartsız yol çağrısı ve tur sınırı (AHI-008, planlanan):** `openRoad {tile, cards:[]}` yasaldır; kartsız başlatan oyuncu rozet almaz, kart verenler paylaşır. Tüm oyuncular reddederse `roadFailed`, kimse kart kaybetmez.
-  Tur başına en çok 2 yol çağrısı: `roadTries < 2` iken `openRoad` yasaldır (insan ve bot için aynı).
 - **Uzun oyun seçeneği (AHI-028, planlanan):** 5–6 oyuncuda isteğe bağlı "uzun oyun" ayarı; **varsayılan kapalı**. Ayrıntı (hangi sayılar değişir) AHI-028 ile bu bölüme eklenir; çevrimiçi odada `setOptions` ile host seçer, bunun için `options` alanı o issue'da genişler.

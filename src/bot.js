@@ -39,7 +39,8 @@ export function botAction(s) {
     const mine = p.hand.filter((id) => (CARDS[id].ilke === pd.ilke || CARDS[id].joker));
     const keep = mine.some((id) => useful(r, wantKind(id)) === 2) ? 1 : 0;
     const n = s.awards[pd.ilke] > 0 ? mine.length - keep : 0;
-    return rows.filter((a) => a.cards.length <= n).pop() || legal.find((a) => !a.cards.length);
+    const fit = rows.filter((a) => a.cards.length <= n); // default (first) variant of the largest size
+    return fit.reduce((b, a) => (a.cards.length > b.cards.length ? a : b), fit[0]) || legal.find((a) => !a.cards.length);
   }
 
   if (s.phase === 'ahlak') return find('drawAhlak');
@@ -48,6 +49,7 @@ export function botAction(s) {
     return legal.reduce((b, a) => (key(a) > key(b) ? a : b));
   }
   if (find('readText')) return find('readText');
+  if (find('enterCity')) return find('enterCity');
 
   const kargo = legal.find((a) => a.type === 'kargo' && a.city === r.goal);
   if (kargo && r.cur > 3) return kargo;
