@@ -20,6 +20,15 @@ const TEXT = {
   bots: 'Şimdi rakipler oynuyor. Ekrana dokunarak hızlandırabilirsin.',
 };
 
+// Örnek kart için hangi insanın verisi kullanılır (AHI-017): telefon bir insandaysa o; tek insanda hep o;
+// çok insanda telefon kimsede değilse null (jenerik örnek, hiçbir elden kart alınmaz).
+export function viewerPlayer(st, viewer) {
+  const p = viewer != null ? st.players[viewer] : null;
+  if (p && !p.bot) return p;
+  const hs = st.players.filter(q => !q.bot);
+  return hs.length === 1 ? hs[0] : null;
+}
+
 export function createTutorial(root, { art, url }) {
   let done = readDone(), coach = !done, introOpen = false, helpOpen = false;
   let seed = null, hadMove = false, quiet = 0, resultUntil = 0, step = null, poll = 0, timer = 0;
@@ -118,8 +127,8 @@ export function createTutorial(root, { art, url }) {
   addEventListener('resize', () => step && place());
 
   // ---------- Amaç kartları (intro) ----------
-  function slides(st) {
-    const hp = st.players.find(p => !p.bot), tid = hp?.task, tc = tid ? CARDS[tid] : null, city = tc?.city ?? 'ankara';
+  function slides(st, viewer) {
+    const hp = viewerPlayer(st, viewer), tid = hp?.task, tc = tid ? CARDS[tid] : null, city = tc?.city ?? 'ankara';
     const yol = hp?.hand.find(id => CARDS[id]?.type === 'yol' && CARDS[id].ilke) ?? 'yol-comert-1', il = CARDS[yol].ilke;
     const fig = (src, cls, cap) => `<figure>${img(src, cls)}<figcaption>${cap}</figcaption></figure>`;
     return [
@@ -138,7 +147,7 @@ export function createTutorial(root, { art, url }) {
 
   function openIntro() {
     if (introOpen || !S) return;
-    const list = slides(S.st); let i = 0;
+    const list = slides(S.st, S.els.viewer?.()); let i = 0;
     introOpen = true; refresh();
     const el = document.createElement('div');
     el.className = 'ay-tut ay-p'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Oyunun amacı');
@@ -175,7 +184,7 @@ export function createTutorial(root, { art, url }) {
   function openHelp() {
     if (helpOpen) return;
     helpOpen = true; refresh();
-    const t = S?.st.players.find(p => !p.bot)?.task, city = t ? CARDS[t].city : 'ankara';
+    const t = S && viewerPlayer(S.st, S.els.viewer?.())?.task, city = t ? CARDS[t].city : 'ankara';
     const el = document.createElement('div');
     el.className = 'ay-tut ay-p help'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Nasıl Oynanır?');
     el.innerHTML = `<div class="tt-sheet"><div class="ay-sheethead"><b>Nasıl Oynanır?</b><button class="ay-btn sm" data-t="x">Kapat</button></div>

@@ -30,7 +30,12 @@ const sfx = createSfx();
 const buzz = p => { try { navigator.vibrate?.(p); } catch {} };
 
 const scene = createScene(document.getElementById('board'), {
-  onTileTap: idx => ui.tapTile(idx),
+  onTileTap: idx => {
+    if (ui.tapTile(idx)) return true;
+    const why = ui.rejectReason(idx);
+    if (why && ui.reject(idx, why, scene.projectTile?.(idx))) { sfx.play('nope'); buzz([15, 30, 15]); }
+    return false;
+  },
   onProgress: p => { prog = p; if (started && !sceneReady) ui.setLoading?.(p); },
 });
 const ui = createUI(document.getElementById('ui'), {
@@ -94,8 +99,8 @@ function act(action, isBot) {
   update(res.events);
 }
 
-const SOUND = { swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
-const BUZZ = { move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
+const SOUND = { endgame: 'close', swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
+const BUZZ = { endgame: [30, 40, 30], move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
 
 function effects(events) {
   let coin = false;
