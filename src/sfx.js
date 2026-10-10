@@ -1,13 +1,12 @@
 // WebAudio efektleri. Eksik/bozuk dosya sessiz geçer, asla throw etmez.
+import { getSettings, setSettings } from './store.js';
 const VOL = { click: 0.5, card: 0.7, coin: 0.6, step: 0.35, close: 0.8, open: 0.7, trade: 0.7, win: 0.8 };
 const PITCH = { step: 0.12, coin: 0.08 };
-const KEY = 'ahilik-muted';
 
 export function createSfx() {
   let ctx = null;
   const bufs = {};
-  let muted = false;
-  try { muted = localStorage.getItem(KEY) === '1'; } catch {}
+  let muted = !getSettings().sound;
   // iOS Safari Ogg çalmaz: AAC (m4a) destekleniyorsa onu, yoksa ogg.
   let ext = 'ogg';
   try { if (new Audio().canPlayType('audio/mp4; codecs="mp4a.40.2"')) ext = 'm4a'; } catch {}
@@ -67,7 +66,7 @@ export function createSfx() {
     },
     setMuted(m) {
       muted = !!m;
-      try { localStorage.setItem(KEY, muted ? '1' : '0'); } catch {}
+      setSettings({ sound: !muted });
     },
   };
 }

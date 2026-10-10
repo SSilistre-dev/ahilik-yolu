@@ -1,10 +1,11 @@
 // Çocuk dostu giriş: amaç kartları (intro), ilk turda canlı ipuçları (coach marks) ve "Nasıl Oynanır?" sayfası.
 // ui.js sürer: tutorial.update(state, legal, events, els) her render'da çağrılır. DOM'u root içine kendisi ekler.
 import { ILKELER, CARDS, CITIES } from './data.js';
+import { store, KEYS } from './store.js';
 
-const KEY = 'ahilik.tutorial.done';
-const readDone = () => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } };
-const writeDone = v => { try { v ? localStorage.setItem(KEY, '1') : localStorage.removeItem(KEY); } catch {} };
+const readFlags = () => store.get(KEYS.flags, {}, d => d && typeof d === 'object');
+const readDone = () => readFlags().tutorialDone === true;
+const writeDone = v => store.set(KEYS.flags, { ...readFlags(), tutorialDone: !!v });
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const TEXT = {
