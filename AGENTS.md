@@ -14,8 +14,9 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
   Repoda, commit mesajında ve PR metninde hiçbir yapay zekâ aracının adı, imzası ya da ortak yazar (co-author) satırı geçmez (kullanıcı kararı, 2026-10-10). `test/brand.test.js` zorlar.
   Ajan araç dosyaları yereldir, repoya girmez (`.git/info/exclude`).
 
-## Komutlar (Docker yok; bağımlılık da yok, host'a paket kurma)
+## Komutlar (istemci bağımlılıksız; yalnız `server/` Docker'lı, host'a paket kurma)
 - Ayağa kaldır: `python3 -m http.server 8000` (proje kökünden)
+- Çevrimiçi sunucu: `make dev-online` (= `PORT=8080 docker compose up --build`, oyun `http://localhost:8080`; port doluysa `PORT=8090 make dev-online`) · `ws` gerektiren testler: `make test-srv` (konteynerde). Saf `server/room.js` testleri host'ta `make olc` ile koşar.
 - Hızlı ölçüm: `make olc` · Tam kapı (bitti demeden önce): `make qa` = sözdizimi + tüm testler (gerçek sayı basar) + varsa tarayıcı testi → 0 fail
 - Tek test: `node --test --test-name-pattern "<ad>" test/`
 - UI kontrolü: headless Brave + CDP ile ekran görüntüsü (`--headless=new --remote-debugging-port=<port> --use-angle=swiftshader --enable-unsafe-swiftshader`); `--screenshot` bayrağı takılıyor, CDP `Page.captureScreenshot` kullan. Görüntüler bakılınca silinir.

@@ -1,4 +1,4 @@
-import { legalActions, actor, wantKind } from './game.js';
+import { actor, wantKind } from './game.js';
 import { CARDS, CITIES, neighbors } from './data.js';
 
 // BFS over open ilke tiles to the tiles adjacent to the goal city (0 = already adjacent).
@@ -25,8 +25,34 @@ function route(s, pi) {
 // How much a card is worth to its owner right now (joker 2, route ilke 2, kargo 1, rest 0).
 const useful = (r, kindOfWant) => (kindOfWant === 'ahievran' || r.next.has(kindOfWant) ? 2 : kindOfWant === 'kargo' ? 1 : 0);
 
-export function botAction(s) {
-  const who = actor(s), legal = legalActions(s), p = s.players[who], pd = s.pending;
+// AHI-025: açgözlü plan, bu turda eldeki kartlarla (kargo hariç) şehre varılır mı? Yalnız ilk hamlede sorulur.
+function reachable(s, p, r) {
+  if (s.movesThisTurn > 0 || s.moveDone) return true; // kargo artık yasal değil; zaten sorulmaz
+  let pos = p.pos, d = r.cur;
+  const hand = [...p.hand];
+  for (let i = 0; i < 8 && d > 0; i++) {
+    const opts = [];
+    for (const id of hand) {
+      const c = CARDS[id]; if (c.kargo) continue;
+      for (const n of neighbors(pos)) {
+        const T = s.tiles[n];
+        if (T.kind === 'ilke' && !T.closed && (c.joker || T.ilke === c.ilke) && r.dist(n) < d) opts.push({ id, n, d: r.dist(n), joker: c.joker ? 1 : 0 });
+      }
+    }
+    if (!opts.length) return false;
+    opts.sort((x, y) => x.d - y.d || x.joker - y.joker);
+    hand.splice(hand.indexOf(opts[0].id), 1); pos = opts[0].n; d = opts[0].d;
+  }
+  return d === 0;
+}
+
+export const LEVELS = ['easy', 'medium', 'hard'];
+
+// view: viewFor çıktısı (gizli bilgi yok), legal: tam durumdan hesaplanan yasal aksiyonlar.
+// ponytail: easy AHI-021'de; hard şimdilik yalnız AHI-025 kargo zamanlaması farkıyla medium.
+export function botAction(s, legal, level = 'medium') {
+  if (level !== 'medium' && level !== 'hard') throw new Error(`bilinmeyen bot seviyesi: ${level}`);
+  const who = actor(s), p = s.players[who], pd = s.pending;
   const find = (type) => legal.find((a) => a.type === type);
   const r = route(s, who);
 
@@ -51,8 +77,21 @@ export function botAction(s) {
   if (find('readText')) return find('readText');
   if (find('enterCity')) return find('enterCity');
 
+  if (!r.goal) { // [AHI-024] görev yok: rozet toplama modu; takas isteme ve hedefsiz kargo yok
+    const mv = legal.filter((a) => a.type === 'move');
+    const gain = (a) => s.tiles[a.tile].badges + (CARDS[a.card].hasText ? 1 : 0);
+    const top = mv.length ? mv.reduce((b, a) => (gain(a) > gain(b) ? a : b)) : null;
+    if (s.movesThisTurn > 0 || s.moveDone) return top && gain(top) > 0 ? top : find('endTurn');
+    if (top) return top;
+    if (s.roadTries === 0) {
+      const road = legal.filter((a) => a.type === 'openRoad' && a.cards.length >= 2 && s.awards[s.tiles[a.tile].ilke] > 0);
+      if (road.length) return road.reduce((b, a) => (a.cards.length > b.cards.length ? a : b));
+    }
+    return find('kargo') || find('pass');
+  }
+
   const kargo = legal.find((a) => a.type === 'kargo' && a.city === r.goal);
-  if (kargo && r.cur > 3) return kargo;
+  if (kargo && (level === 'hard' ? !reachable(s, p, r) : r.cur > 3)) return kargo; // [AHI-025] hard: eldeki kartlarla varılamıyorsa
   const rank = (a) => r.dist(a.tile) - s.tiles[a.tile].badges * 0.1; // tie-break: more badges
   const moves = legal.filter((a) => a.type === 'move');
   const best = (list) => list.reduce((b, a) => (rank(a) < rank(b) ? a : b));

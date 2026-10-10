@@ -3,10 +3,11 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { newGame, legalActions, apply, score, actor } from '../src/game.js';
 import * as bot from '../src/bot.js';
+import { viewFor } from '../src/view.js';
 
 export const LEVELS = bot.LEVELS ?? ['medium'];
 // Tek karar noktası. N04 sonrası: bot.botAction(viewFor(s, actor(s), gameId), legalActions(s), level)
-const decide = (s, level) => bot.botAction(s, level);
+const decide = (s, level) => bot.botAction(viewFor(s, actor(s), 'sim'), legalActions(s), level);
 
 export function parseLineup(levels, players) {
   const l = levels.length === 1 ? Array(players).fill(levels[0]) : levels;

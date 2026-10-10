@@ -13,7 +13,7 @@ function play(seed, n, pick) {
   let s = newGame({ players: Array.from({ length: n }, (_, i) => ({ name: `B${i}`, bot: true })), seed, startIdx: seed % n });
   let steps = 0;
   while (s.phase !== 'over' && steps++ < 3000) {
-    const a = safeBotAction(s, pick);
+    const a = safeBotAction(s, 'medium', 't', pick);
     assert.ok(isLegal(s, a), `seed ${seed} step ${steps}: illegal ${JSON.stringify(a)}`);
     s = apply(s, a).state;
   }
@@ -36,7 +36,7 @@ test('fuzz: bot her 3. çağrıda fırlatır, oyun biter', () => {
   quiet(() => {
     for (let seed = 1; seed <= 20; seed++) {
       let c = 0;
-      assert.equal(play(seed, 2 + (seed % 5), (s) => (++c % 3 ? botAction(s) : boom())).phase, 'over');
+      assert.equal(play(seed, 2 + (seed % 5), (v, l, lv) => (++c % 3 ? botAction(v, l, lv) : boom())).phase, 'over');
     }
   });
 });

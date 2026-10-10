@@ -1,4 +1,4 @@
-.PHONY: olc qa sim
+.PHONY: olc qa sim dev-online test-srv
 
 JS := $(wildcard src/*.js server/*.js test/*.js test/*.mjs)
 
@@ -10,7 +10,7 @@ olc:
 qa:
 	set -eo pipefail; for f in $(JS); do node --check $$f; done; \
 	out=$$(mktemp "$${TMPDIR:-/tmp}/qa.XXXXXX"); trap 'rm -f "$$out"' EXIT; \
-	VIEW_FUZZ_GAMES=500 node --test --test-reporter=tap test/ > "$$out" 2>&1 || { grep -E "^(not ok|# (tests|pass|fail))" "$$out" | head -40; echo "QA KIRMIZI"; exit 1; }; \
+	VIEW_FUZZ_GAMES=500 LASTTURN_SEEDS=300 node --test --test-reporter=tap test/ > "$$out" 2>&1 || { grep -E "^(not ok|# (tests|pass|fail))" "$$out" | head -40; echo "QA KIRMIZI"; exit 1; }; \
 	tests=$$(sed -n "s/^# tests //p" "$$out"); pass=$$(sed -n "s/^# pass //p" "$$out"); \
 	if [ -z "$$tests" ] || [ "$$tests" -eq 0 ] || [ "$$pass" != "$$tests" ]; then echo "QA KIRMIZI: $$pass/$$tests"; exit 1; fi; \
 	echo "QA: $$pass/$$tests test geçti"; \
@@ -20,3 +20,12 @@ qa:
 SIM_ARGS ?= --games 2000 --players 4 --levels medium --seed 1
 sim:
 	set -eo pipefail; node test/sim.mjs $(SIM_ARGS)
+
+# Çevrimiçi sunucu (Docker): yerelde http://localhost:$(PORT). ws yalnız konteynerde kurulur.
+PORT ?= 8080
+dev-online:
+	PORT=$(PORT) docker compose up --build
+
+# ws gerektiren sunucu testleri (test/*.srv.mjs) konteynerde koşar.
+test-srv:
+	docker compose run --rm server npm test --prefix server

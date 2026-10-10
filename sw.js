@@ -3,7 +3,7 @@
 // ASSETS_REV from the generated precache.js, so a V bump does not re-download the ~5 MB of assets; it only
 // re-downloads when asset contents change (accepted cost: an image replaced under the same name changes the rev).
 importScripts('./precache.js');
-const V = 16;
+const V = 17;
 const SHELL = `ahilik-shell-v${V}`;
 const ASSETS = `ahilik-assets-${self.ASSETS_REV}`;
 const NET_TIMEOUT = 3000;

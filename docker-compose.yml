@@ -1,0 +1,18 @@
+services:
+  server:
+    build: .
+    ports: ["${PORT:-8080}:8080"]
+    environment:
+      - MAX_ROOMS
+      - ALLOWED_ORIGINS
+      - BOT_DELAY_MS
+      - DISCONNECT_GRACE_MS
+      - ROOM_IDLE_MS
+      - ROOM_CREATE_PER_MIN
+    volumes:
+      - .:/app                      # kod değişince imajı yeniden kurmadan dene
+      - /app/server/node_modules    # imajdaki ws, bind mount tarafından gölgelenmesin
+      - ahilik-data:/data
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+volumes:
+  ahilik-data:

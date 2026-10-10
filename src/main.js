@@ -10,6 +10,7 @@ import { createSfx } from './sfx.js';
 import { goalTile, pathTo } from './path.js';
 import { CARDS } from './data.js';
 import { initPwa } from './pwa.js';
+import { createRouter } from './router.js';
 
 const BOT_DELAY = 700;
 const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
@@ -17,6 +18,7 @@ const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
 let botTimer = 0;
+let botLevels = []; // koltuk -> 'easy'|'medium'|'hard'
 let lastBotAct = 0;
 let undoStack = [];
 let sceneReady = false;
@@ -30,7 +32,12 @@ const sfx = createSfx();
 const buzz = p => { try { navigator.vibrate?.(p); } catch {} };
 
 const scene = createScene(document.getElementById('board'), {
-  onTileTap: idx => ui.tapTile(idx),
+  onTileTap: idx => {
+    if (ui.tapTile(idx)) return true;
+    const why = ui.rejectReason(idx);
+    if (why && ui.reject(idx, why, scene.projectTile?.(idx))) { sfx.play('nope'); buzz([15, 30, 15]); }
+    return false;
+  },
   onProgress: p => { prog = p; if (started && !sceneReady) ui.setLoading?.(p); },
 });
 const ui = createUI(document.getElementById('ui'), {
@@ -61,11 +68,12 @@ async function start(opts) {
   highlight = [];
   botFails = 0;
   state = newGame({ ...opts, seed: (Math.random() * 2 ** 32) >>> 0 });
+  botLevels = (opts.players ?? []).map((p) => p.level ?? 'medium');
   update([]);
 }
 
 function act(action, isBot) {
-  if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return ui.showStart(start); }
+  if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return router.go('menu', {}, { replace: true }); }
   if (action.type === 'undo') {
     if (isBot || !undoStack.length) return;
     sfx.play('click'); buzz(10);
@@ -94,8 +102,8 @@ function act(action, isBot) {
   update(res.events);
 }
 
-const SOUND = { swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
-const BUZZ = { move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
+const SOUND = { endgame: 'close', swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
+const BUZZ = { endgame: [30, 40, 30], move: 10, badges: 30, trade: [20, 40, 20], over: [60, 40, 60] };
 
 function effects(events) {
   let coin = false;
@@ -114,7 +122,7 @@ function effects(events) {
   if (coin) sfx.play('coin');
 }
 
-const botNext = () => act(safeBotAction(state), true);
+const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
 
 function update(events) {
   clearTimeout(botTimer);
@@ -153,9 +161,17 @@ if (mute) {
   if (side) { mute.className = "ay-round ay-p"; side.prepend(mute); }
 }
 
-ui.showStart(start);
+// Ekran yönlendirici: şimdilik menu (başlangıç ekranı) ve game. Duraklat menüsü yok (AHI-064):
+// oyundayken geri tuşu pause'a gider, pause hemen geri döner; yani geri tuşu oyunda etkisizdir.
+const router = createRouter({ guards: { game: () => started, pause: () => started } });
+router.onChange(({ name }) => {
+  if (name === 'menu') { clearTimeout(botTimer); ui.showStart(opts => { start(opts); router.go('game'); }); }
+  else if (name === 'pause') queueMicrotask(() => router.back());
+});
+addEventListener('keydown', e => { if (e.key === 'Escape' && !e.target.closest?.('input,textarea')) router.back(); });
+router.start();
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
 
 initPwa();

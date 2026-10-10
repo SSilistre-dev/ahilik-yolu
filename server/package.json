@@ -1,0 +1,3 @@
+{ "name": "ahilik-server", "private": true, "type": "module",
+  "dependencies": { "ws": "8.21.3" },
+  "scripts": { "test": "node --test ../test/*.srv.mjs" } }
