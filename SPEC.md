@@ -192,6 +192,9 @@ Animasyon önceki ve yeni state farkından türetilir.
   - ≤ 120k üçgen, ≤ 60 draw call. Tekrarlayan objeler InstancedMesh veya merge ile çizilir.
   - Gölge yalnız piyonlarda ve simge yapılarda, shadow map 1024. DPR en çok 1.5.
   - Render talep üzerine yapılır; animasyon sürerken loop çalışır.
+  - Bekleme kareleri `setTimeout` ile aralanır (vsync yok); süs döngüsü (parlama, bayrak, aktif piyon nefesi) 5 sn girdisiz kalınca durur, dokunma/render/yeniden boyut/sekme dönüşü uyandırır. Gölge haritası yalnız piyon kıpırdayınca yenilenir. Yalnız aktif piyonun Idle klibi oynar.
+  - `prefers-reduced-motion: reduce` açıkken zıplama, kamera kayması, rozet/engel animasyonu ve süs döngüsü yoktur; durum anında yerleşir.
+  - WebGL bağlamı kaybolursa çizim durur; geri gelince son durum yeniden çizilir, 3 sn dönmezse "Yeniden Yükle" mesajı çıkar. Kaldırılan piyonların GPU kaynakları `disposePawn` ile serbest bırakılır.
 - **Model yüklenemezse** manifestteki `fallback` primitifi çizilir. Oyun hiçbir zaman bloklanmaz.
 - **Kart UI HTML/CSS'tir:** kart yüzü basılı görseldir, el yelpaze düzenindedir, ahlak kartı flip animasyonuyla açılır.
 
