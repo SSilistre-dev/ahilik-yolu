@@ -213,8 +213,7 @@ test('end conditions finish the round to startIdx', () => {
   assert.ok(s.endgame);
   s.movesThisTurn = 1;
   s = apply(s, { type: 'endTurn' }).state; // A -> B, round not complete
-  assert.equal(s.phase, 'ahlak');
-  s = apply(s, { type: 'drawAhlak' }).state; // empty deck is tolerated
+  assert.equal(s.phase, 'move'); // empty ahlak deck: no ahlak step
   s.movesThisTurn = 1;
   s = apply(s, { type: 'endTurn' }).state; // B -> A (startIdx)
   assert.equal(s.phase, 'over');
@@ -262,3 +261,34 @@ test('score multipliers and tie-break', () => {
   assert.equal(t[1].pIdx, 2);
 });
 
+
+const emptyAhlakEnd = (s) => {
+  s.decks.ahlak = []; s.phase = 'move'; s.movesThisTurn = 1;
+  return apply(s, { type: 'endTurn' });
+};
+
+test('ahlak destesi boşken tur doğrudan move fazında başlar', () => {
+  const r = emptyAhlakEnd(fresh());
+  assert.equal(r.state.phase, 'move');
+  assert.ok(r.events.some((e) => e.type === 'ahlak' && e.empty === true && e.pIdx === 1));
+  assert.ok(!types(r.state).includes('drawAhlak'));
+  assert.throws(() => apply(r.state, { type: 'drawAhlak' }));
+});
+
+test('ahlak destesi doluyken tur ahlak fazında başlar', () => {
+  const s = fresh(); s.phase = 'move'; s.movesThisTurn = 1;
+  const r = apply(s, { type: 'endTurn' });
+  assert.equal(r.state.phase, 'ahlak');
+  assert.ok(!r.events.some((e) => e.type === 'ahlak'));
+});
+
+test('boş desteli son tur: oyun over olur', () => {
+  let s = fresh(); s.endgame = true; s.decks.ahlak = [];
+  s.phase = 'move'; s.movesThisTurn = 1;
+  s = apply(s, { type: 'endTurn' }).state; // A -> B
+  assert.equal(s.phase, 'move');
+  s.movesThisTurn = 1;
+  const r = apply(s, { type: 'endTurn' }); // B -> A (startIdx)
+  assert.equal(r.state.phase, 'over');
+  assert.ok(!r.events.some((e) => e.type === 'ahlak'));
+});

@@ -12,7 +12,7 @@
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%AA%99%3C/text%3E%3C/svg%3E">
   <title>Ahilik Yolu – Ahlakın Yolu</title>
-  <link rel="stylesheet" href="style.css?v=13">
+  <link rel="stylesheet" href="style.css?v=14">
   <style>
     html, body { overscroll-behavior: none; touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-text-size-adjust: 100%; }
     input, textarea { -webkit-user-select: text; user-select: text; }
@@ -20,6 +20,12 @@
     #ui:empty::before { content: 'Yükleniyor…'; position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #2b1d12; color: #f3e3c3; font: 600 20px system-ui, sans-serif; }
     #old { display: none; position: fixed; inset: 0; z-index: 10000; align-items: center; justify-content: center; padding: 24px; background: #2b1d12; color: #fff; font: 600 20px/1.4 system-ui, sans-serif; text-align: center; }
     #mute:not(.ay-round) { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; z-index: 50; border: 0; border-radius: 50%; background: rgba(43,29,18,.75); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+    #fatal { position: fixed; inset: 0; z-index: 10001; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: calc(env(safe-area-inset-top, 0px) + 24px) 24px calc(env(safe-area-inset-bottom, 0px) + 24px); background: #2b1d12; color: #f3e3c3; font: 500 18px/1.45 system-ui, sans-serif; text-align: center; overflow: auto; }
+    #fatal h1 { margin: 0; font-size: 26px; }
+    #fatal p { margin: 0; max-width: 28em; }
+    #fatal button { min-height: 48px; padding: 0 28px; border: 0; border-radius: 12px; background: #e8b04a; color: #2b1d12; font: 700 18px system-ui, sans-serif; cursor: pointer; }
+    #fatal details { max-width: 90vw; font-size: 13px; opacity: .8; }
+    #fatal pre { white-space: pre-wrap; word-break: break-word; text-align: left; }
     #rotate { display: none; position: fixed; inset: 0; z-index: 9999; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #2b1d12; color: #fff; font: 600 20px system-ui, sans-serif; text-align: center; }
     #rotate b { font-size: 56px; }
     @media (orientation: landscape) and (max-height: 500px) { #rotate { display: flex; } }
@@ -37,16 +43,17 @@
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
       "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-      "./src/main.js": "./src/main.js?v=13",
-      "./src/path.js": "./src/path.js?v=13",
-      "./src/data.js": "./src/data.js?v=13",
-      "./src/game.js": "./src/game.js?v=13",
-      "./src/bot.js": "./src/bot.js?v=13",
-      "./src/scene.js": "./src/scene.js?v=13",
-      "./src/ui.js": "./src/ui.js?v=13",
-      "./src/tutorial.js": "./src/tutorial.js?v=13",
-      "./src/sfx.js": "./src/sfx.js?v=13",
-      "./src/assets.js": "./src/assets.js?v=13"
+      "./src/main.js": "./src/main.js?v=14",
+      "./src/path.js": "./src/path.js?v=14",
+      "./src/data.js": "./src/data.js?v=14",
+      "./src/game.js": "./src/game.js?v=14",
+      "./src/bot.js": "./src/bot.js?v=14",
+      "./src/botstep.js": "./src/botstep.js?v=14",
+      "./src/scene.js": "./src/scene.js?v=14",
+      "./src/ui.js": "./src/ui.js?v=14",
+      "./src/tutorial.js": "./src/tutorial.js?v=14",
+      "./src/sfx.js": "./src/sfx.js?v=14",
+      "./src/assets.js": "./src/assets.js?v=14"
     }
   }
   </script>
@@ -58,7 +65,27 @@
   <button id="mute" type="button" aria-label="Sesi aç/kapat">🔊</button>
   <div id="rotate" role="alert"><b>📱</b>Telefonu dik tut</div>
   <!-- Inline import so the importmap applies and main.js gets the versioned URL (a plain src= bypasses the importmap). -->
-  <script type="module">import "./src/main.js";</script>
+  <script>
+    // Açılış hatası (ağ/CDN/WebGL): sonsuz "Yükleniyor…" yerine anlaşılır ekran. Dinamik import() importmap'i kullanır.
+    window.__ahiFatal = function (title, msg, err) {
+      if (document.getElementById('fatal')) return;
+      var d = document.createElement('div'), h = document.createElement('h1'), p = document.createElement('p'),
+          b = document.createElement('button'), det = document.createElement('details'), sm = document.createElement('summary'), pre = document.createElement('pre');
+      d.id = 'fatal'; d.setAttribute('role', 'alert');
+      h.textContent = title; p.textContent = msg;
+      b.type = 'button'; b.textContent = 'Yeniden Dene'; b.onclick = function () { location.reload(); };
+      sm.textContent = 'Teknik ayrıntı'; pre.textContent = String((err && err.message) || err || '');
+      det.append(sm, pre); d.append(h, p, b, det); document.body.append(d);
+    };
+    function bootError(err) {
+      var c = document.createElement('canvas'), gl = false;
+      try { gl = !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) {}
+      window.__ahiFatal('Oyun açılamadı', gl
+        ? 'Oyun dosyaları yüklenemedi. İnternete bağlı mısın? Bağlantını kontrol edip tekrar dene.'
+        : 'Bu cihazda 3 boyutlu grafik çalışmıyor. Başka bir tarayıcı dene (Chrome ya da Safari).', err);
+    }
+    import('./src/main.js').catch(bootError);
+  </script>
   <script>
     try {
       const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;

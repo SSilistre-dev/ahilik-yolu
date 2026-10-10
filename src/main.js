@@ -2,7 +2,7 @@ import * as G from './game.js';
 const { newGame, legalActions, apply, score } = G;
 // SPEC v4 actor(); eski motorda yok -> active.
 const actor = G.actor || (s => s.active);
-import { botAction } from './bot.js';
+import { safeBotAction, fallbackAction } from './botstep.js';
 import { createScene } from './scene.js';
 import { createUI } from './ui.js';
 import { createSfx } from './sfx.js';
@@ -21,6 +21,7 @@ let undoStack = [];
 let sceneReady = false;
 let prog = 0;
 let started = false;
+let botFails = 0;
 
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
@@ -56,6 +57,8 @@ async function start(opts) {
     ui.setLoading?.(1);
   }
   undoStack = [];
+  highlight = [];
+  botFails = 0;
   state = newGame({ ...opts, seed: (Math.random() * 2 ** 32) >>> 0 });
   update([]);
 }
@@ -73,8 +76,14 @@ function act(action, isBot) {
     res = apply(state, action);
   } catch (e) {
     console.error(e);
+    if (isBot) {
+      if (++botFails >= 3) return window.__ahiFatal?.('Oyunda bir sorun oldu', 'Yeniden başlatmak ister misin?', e);
+      clearTimeout(botTimer);
+      botTimer = setTimeout(() => { const a = fallbackAction(legalActions(state)); if (a) act(a, true); }, 300);
+    }
     return;
   }
+  if (isBot) botFails = 0;
   if (!isBot) sfx.play('click');
   if (isBot) lastBotAct = Date.now();
   if (isBot || action.type !== 'move') undoStack = [];
@@ -95,7 +104,7 @@ function effects(events) {
         const pt = scene.projectTile?.(ev.tile);
         if (pt) ui.flyCoins?.(pt, ev.pIdx, ev.n);
         coin = true;
-      } else if (SOUND[ev.type]) sfx.play(SOUND[ev.type]);
+      } else if (SOUND[ev.type] && !ev.empty) sfx.play(SOUND[ev.type]);
       if (state.players[ev.pIdx ?? state.active]?.bot) continue;
       if (ev.type === 'ahlak' && CARDS[ev.card]?.negative) buzz([40, 60, 40]);
       else if (BUZZ[ev.type]) buzz(BUZZ[ev.type]);
@@ -104,7 +113,7 @@ function effects(events) {
   if (coin) sfx.play('coin');
 }
 
-const botNext = () => act(botAction(state), true);
+const botNext = () => act(safeBotAction(state), true);
 
 function update(events) {
   clearTimeout(botTimer);
@@ -113,12 +122,11 @@ function update(events) {
   const p = state.players[state.active], who = state.players[actor(state)];
   if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
   if (state.phase === 'over') state.__score = score(state);
-  highlight = [];
   ui.render(state, legal, events);
   renderScene();
   effects(events);
   if (state.phase !== 'over' && who.bot) {
-    const d = events.some(e => e.type === 'ahlak') ? BOT_DELAY_AHLAK : BOT_DELAY;
+    const d = events.some(e => e.type === 'ahlak' && !e.empty) ? BOT_DELAY_AHLAK : BOT_DELAY;
     botTimer = setTimeout(botNext, d);
   }
 }
@@ -147,4 +155,4 @@ if (mute) {
 ui.showStart(start);
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { ui, scene, act, sfx, get state() { return state; } };
+window.__ahilik = { ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };

@@ -485,7 +485,13 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   return {
     render(state, legalActions = [], events = []) {
       st = state; legal = legalActions;
-      if (st.seed !== seed) { seed = st.seed; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {}; }
+      if (st.seed !== seed) {
+        seed = st.seed; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
+        rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
+        log = []; lastActive = -1; lastHl = ''; handOpen = true; selected = null; passAsk = false;
+        clearTimeout(celebrate); clearTimeout(toastTimer);
+        toastEl.replaceChildren(); fxEl.replaceChildren(); drawerEl.hidden = true;
+      }
       // Tek insan varsa telefon hep onda; çok insanda perde kalkınca viewer atanır.
       const hs = st.players.map((p, i) => p.bot ? -1 : i).filter(i => i >= 0);
       if (hs.length === 1) viewer = hs[0];
@@ -496,7 +502,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       for (const ev of events) {
         { const tx = evText(ev); if (tx) toast(tx); else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
         if (ev.type === 'ahlak') {
-          const id = ev.card || (/boş/.test(ev.text || '') ? null : st.decks?.ahlakDiscard?.at(-1));
+          const id = ev.empty ? null : (ev.card || st.decks?.ahlakDiscard?.at(-1));
           if (id) reveal(id, { caption: ev.text });
         } else if (ev.type === 'trade') {
           tradeFx(ev, 300 + 1500 * k++);

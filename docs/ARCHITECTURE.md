@@ -134,7 +134,7 @@ meta = { conn: 'ok'|'reconnecting'|'lost', deadline: epochMs|null, seats: [...lo
 
 ## 5. Ağ protokolü v1 (WebSocket, JSON)
 
-Her mesaj `{ v:1, t:<tip>, ... }` biçimindedir. En büyük mesaj 8 KB'tır. Saniyede en çok 20 mesaj kabul edilir. Aşan bağlantı `error{code:'rate'}` alır ve kapatılır.
+Her mesaj `{ v:1, t:<tip>, ... }` biçimindedir. En büyük mesaj 8192 bayttır (`tooBig`). Saniyede en çok 20 mesaj kabul edilir. Aşan bağlantı `error{code:'rate'}` alır ve kapatılır. `hello` bağlantıdan sonra 10 sn içinde gelmezse bağlantı kapatılır. Ayrıntılı sözleşme: `SPEC.md` v5.
 
 **İstemci → sunucu**
 
@@ -144,24 +144,24 @@ Her mesaj `{ v:1, t:<tip>, ... }` biçimindedir. En büyük mesaj 8 KB'tır. San
 | `ready` | `on:bool` | insan | Lobide hazır olma. |
 | `addBot` | `level:'easy'\|'medium'\|'hard'` | host | Boş koltuğa bot ekler. |
 | `setBot` | `seat`, `level` | host | Botun seviyesini değiştirir. |
-| `removeSeat` | `seat` | host | Botu çıkarır ya da insanı atar (kick). |
-| `setOptions` | `turnSeconds:0\|30\|60\|120`, `startSeat:'youngest'\|seat` | host | Oda ayarları. |
+| `removeSeat` | `seat` | host | Botu çıkarır ya da insanı atar (kick, `kicked`). Host kendini atamaz. |
+| `setOptions` | `turnSeconds:0\|30\|60\|120`, `startSeat:'random'\|0..5` | host | Oda ayarları. Sunucu yaş bilmez: "yaşı küçük başlar" kuralı lobide host'a bırakılır, varsayılan rastgele. |
 | `start` | – | host | En az 2 koltuk dolu ve tüm insanlar hazırsa oyunu başlatır. |
-| `act` | `action`, `base:version` | actor | Oyun aksiyonu. `base` eskiyse reddedilir. |
+| `act` | `action`, `base:version` | actor | Oyun aksiyonu. `base` eskiyse reddedilir. `undo` kabul edilmez. |
 | `emote` | `id` (hazır listeden) | oyuncu | Hazır tepki; serbest metin yok. |
 | `rematch` | – | oyuncu | Oyun bitince tekrar oynama oyu. |
-| `leave` | – | herkes | Odadan bilerek çıkış; lobide koltuk boşalır, oyunda koltuğu bot devralır. |
+| `leave` | – | oyuncu | Odadan bilerek çıkış; lobide koltuk kalkar (sonrakiler kayar), oyunda koltuk kalıcı Orta bot olur. |
 | `ping` | – | herkes | 25 sn'de bir. |
 
 **Sunucu → istemci**
 
 | t | alanlar | açıklama |
 |---|---|---|
-| `welcome` | `you:{seat, token}`, `code` | Token istemcide `localStorage['ahilik.room.'+code]` içinde saklanır. |
+| `welcome` | `code`, `you:{seat, token}` | Katılma ve lobide koltuk kayması sonrası (etkilenen insanlara yeni `welcome` gider). Token istemcide `localStorage['ahilik.room.'+code]` içinde saklanır; başka mesajda ve URL'de bulunmaz. |
 | `lobby` | `seats:[{seat,name,avatar,bot,level,ready,online,host}]`, `options`, `phase:'lobby'\|'game'\|'over'` | Lobi her değiştiğinde gönderilir. |
-| `game` | `version`, `view`, `legal`, `events`, `deadline` | Her aksiyondan sonra koltuk başına ayrı hazırlanır. |
+| `game` | `version`, `gameId`, `view`, `legal`, `events`, `deadline`, `now`, `seats`, `rematch` | Her aksiyondan sonra koltuk başına ayrı hazırlanır. `legal` yalnız sırası gelen koltuğa dolu. `deadline`: zamanlayıcı epoch ms ya da `null`; `now`: sunucu saati; `seats`: herkese açık künye `{seat,name,avatar,bot,level,online,takeover}`; `rematch`: `phase:'over'`'da `{votes,need}`. |
 | `emote` | `seat`, `id` | Tepki yayını. |
-| `error` | `code`, `msg` | Kodlar: `stale`, `illegal`, `notYourTurn`, `full`, `started`, `notFound`, `rate`, `badName`, `version`. |
+| `error` | `code`, `msg` | Kodlar: `stale`, `illegal`, `notYourTurn`, `notHost`, `full`, `started`, `notFound`, `rate`, `tooBig`, `badMsg`, `badName`, `version`, `kicked`, `replaced`, `expired`. Bağlantıyı kapatanlar: `full`, `started`, `notFound`, `rate`, `tooBig`, `version`, `kicked`, `replaced`, `expired`. |
 | `pong` | – | `ping` cevabı. |
 
 ```mermaid
@@ -201,7 +201,7 @@ Sunucu otoriterdir. İstemci hiçbir zaman tam state görmez.
 
 | Alan | View'da |
 |---|---|
-| `seed`, `rng` | `seed` → opak `gameId` (oyun başına rastgele dize), `rng` → `0` |
+| `seed`, `rng` | `seed` → opak `gameId` (oda üretir, oyun başına rastgele 12 karakter `[a-z2-9]`; `viewFor(state, seat, gameId)`), `rng` → `0` |
 | `players[i].hand` (i ≠ seat) | aynı uzunlukta `null` dizisi |
 | `decks.yol`, `decks.ahlak`, `decks.ticaret` | aynı uzunlukta `null` dizisi (sıra gizli) |
 | `decks.yolDiscard`, `decks.ahlakDiscard` | açık (masada görünür) |
@@ -232,6 +232,7 @@ stateDiagram-v2
   over --> game: rematch (insanların çoğu oy verdi) · yeni seed, aynı koltuklar
   lobby --> [*]: 24 sa boşta · alarm → storage.deleteAll
   over --> [*]: 24 sa boşta
+  lobby --> [*]: hiç insan katılmadı · 1 sa
   game --> [*]: 24 sa hiç bağlantı yok
 ```
 
@@ -242,8 +243,10 @@ stateDiagram-v2
 | Bot sırası | 700 ms (ahlak sonrası 1200 ms) | `botAction(viewFor(bot), legal, level)` uygulanır. |
 | Tur süresi (`turnSeconds>0`) | 30/60/120 sn | Süre dolunca o oyuncu için **Orta** bot bir aksiyon oynar. Log satırı: "süre doldu, otomatik oynandı". |
 | Cevap süresi (takas/yol katkısı) | 20 sn | Otomatik ret ya da `contribute []`. |
-| Kopan bağlantı | 30 sn tolerans | Koltuk "bot devraldı" olur. Oyuncu dönünce koltuğu geri alır. |
+| Kopan bağlantı (oyunda) | 30 sn tolerans | Koltuk `takeover:true` olur, Orta bot oynar. Oyuncu token ile dönünce geri alır. |
+| Kopan bağlantı (lobide) | 30 sn tolerans | Koltuk düşer; host ise devredilir. |
 | Boşta oda | 24 sa | Bellekten ve diskten silinir. |
+| Hiç insan katılmamış oda | 1 sa | Silinir (terk edilmiş `POST /api/rooms` çağrıları depoyu doldurmasın). |
 
 **Kalıcılık.** Her başarılı mutasyondan sonra `/data/rooms/<kod>.json` atomik olarak yazılır (geçici dosya + `rename`). Snapshot `{lobby, state, version, log(son 200), deadlines}` içerir. Konteyner yeniden başlarsa açılışta diskteki odalar yüklenir; istemciler token ile aynı koltuğa döner. Yeniden dağıtım (deploy) en çok birkaç saniyelik kopma yaratır.
 
@@ -251,7 +254,7 @@ stateDiagram-v2
 
 ## 8. Davet kodu
 
-- Alfabe: `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 karakter; 0, O, 1, I, L yok). Uzunluk 6, yani yaklaşık 887 milyon kombinasyon.
+- Alfabe: `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 karakter; 0, O, 1, I, L yok). Uzunluk 6, yani 887 503 681 kombinasyon.
 - Kodu `POST /api/rooms` üretir. Oda haritasında varsa yeni kod denenir (en çok 5 deneme).
 - Rate limit: IP başına dakikada 10 oda (bellek içi token bucket; IP, Traefik'in `X-Forwarded-For` başlığından okunur).
 - Paylaşım: Web Share API ve panoya kopyalama. Link: `https://ahilik.ssilistre.dev/?oda=K7M2QX`. Link açılınca katılma ekranı kodu otomatik doldurur.
@@ -259,7 +262,7 @@ stateDiagram-v2
 
 ## 9. Bot seviyeleri
 
-İmza: `botAction(view, legal, level)`. Saf ve deterministiktir; rastgelelik `view.gameId + version` tohumundan gelir.
+İmza: `botAction(view, legal, level)`. Saf ve deterministiktir; rastgelelik yalnız `view.gameId`, `view.turn`, `view.movesThisTurn`, `view.offersThisTurn`, `view.roadTries` ve `legal.length` değerlerinden türetilir; aynı view aynı kararı verir.
 
 | Seviye | Davranış | Hedef (sim, 4p, koltuk döndürmeli, 2000 oyun) |
 |---|---|---|
