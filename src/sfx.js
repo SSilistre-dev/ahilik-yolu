@@ -94,9 +94,10 @@ export function createSfx({
         });
       } catch {}
     },
-    setMuted(m) {
+    // persist=false: ayarlardan gelen değer yalnız uygulanır, yeniden yazılmaz (veri silindikten sonra anahtar geri gelmesin)
+    setMuted(m, persist = true) {
       muted = !!m;
-      setSettings({ sound: !muted });
+      if (persist) setSettings({ sound: !muted });
     },
   };
 }

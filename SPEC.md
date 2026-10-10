@@ -127,7 +127,7 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
 
 ## Sözleşme (dondurulmuş)
 
-Statik veriler `src/data.js` içinde: `ILKELER`, `ILKE_IDS`, `CITIES`, `BOARD`, `neighbors`, `CARDS`, `HAND_SIZE`, `AWARD_START`, `PLAYER_COLORS`.
+Statik veriler `src/data.js` içinde: `ILKELER`, `ILKE_IDS`, `CITIES`, `BOARD`, `neighbors`, `CARDS`, `HAND_SIZE`, `AWARD_START`, `PLAYER_COLORS`; profil (M04): `AVATARS` (`{id,name,model,color,glyph}`; `model` = `MODELS` anahtarı), `AVATAR_IDS`, `NAME_MAX` (16), `cleanName(raw) -> string|null` (NFC, kontrol/sıfır genişlik/bidi silinir, boşluk teke iner, ilk 16 kod noktası), `assignAvatars(n, first) -> id[]`.
 Kartlara her yerde `cardId` ile başvurulur.
 
 ```js
@@ -144,7 +144,7 @@ state = {
   offersThisTurn: 0, roadTries: 0, // v4: tur içi sayaçlar (bot döngü koruması), endTurn'de 0
   tiles: [25]{ idx, r, c, kind:'city'|'ilke', ilke, city, closed:false, closedBy:null, badges:0, occupants:[pIdx] }, // occupants ordered by arrival
   awards: { [ilke]: 4 },
-  players: [{ name, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
+  players: [{ name, avatar /*AVATAR_IDS içinden ya da null*/, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
   decks: { yol:[], yolDiscard:[], ahlak:[], ahlakDiscard:[], ticaret:[] },
 }
 ```

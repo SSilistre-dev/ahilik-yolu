@@ -82,6 +82,13 @@ const clean = o => {
 export const getSettings = (s = store) => clean(s.get(KEYS.settings));
 export const setSettings = (patch, s = store) => s.set(KEYS.settings, clean({ ...getSettings(s), ...patch }));
 
+// Bot bekleme süreleri (ms). Çarpan: yavaş 1,6 / normal 1 / hızlı 0,5; alt sınır 150 ms.
+const BOT_MULT = { slow: 1.6, normal: 1, fast: 0.5 };
+export function botDelays(settings, bot = 700, ahlak = 1200) {
+  const k = BOT_MULT[settings?.botSpeed] ?? 1, f = v => Math.max(150, Math.round(v * k));
+  return { bot: f(bot), ahlak: f(ahlak) };
+}
+
 export function reducedMotion(s = store) {
   const m = getSettings(s).motion;
   if (m !== 'auto') return m === 'off';

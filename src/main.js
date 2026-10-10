@@ -11,9 +11,11 @@ import { goalTile, pathTo } from './path.js';
 import { CARDS } from './data.js';
 import { initPwa } from './pwa.js';
 import { createRouter } from './router.js';
+import { createMenu, applyTokens } from './menu.js';
+import { getSettings, botDelays } from './store.js';
+import { defineProfile, getProfile } from './profile.js';
+import { defineSettings, applyDom } from './settings.js';
 
-const BOT_DELAY = 700;
-const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
 const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
@@ -29,7 +31,7 @@ let botFails = 0;
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
 
-const buzz = p => { try { navigator.vibrate?.(p); } catch {} };
+const buzz = p => { try { if (getSettings().vibrate) navigator.vibrate?.(p); } catch {} };
 
 const scene = createScene(document.getElementById('board'), {
   onTileTap: idx => {
@@ -135,8 +137,8 @@ function update(events) {
   renderScene();
   effects(events);
   if (state.phase !== 'over' && who.bot) {
-    const d = events.some(e => e.type === 'ahlak' && !e.empty) ? BOT_DELAY_AHLAK : BOT_DELAY;
-    botTimer = setTimeout(botNext, d);
+    const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
+    botTimer = setTimeout(botNext, events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot);
   }
 }
 
@@ -152,8 +154,9 @@ document.getElementById('ui').addEventListener('click', e => { if (e.target.clos
 
 // Ses aç/kapa düğmesi (index.html'de #mute).
 const mute = document.getElementById('mute');
+let paintMute = () => {};
 if (mute) {
-  const paint = () => { mute.textContent = sfx.muted ? '🔇' : '🔊'; mute.setAttribute('aria-pressed', String(sfx.muted)); };
+  const paint = paintMute = () => { mute.textContent = sfx.muted ? '🔇' : '🔊'; mute.setAttribute('aria-pressed', String(sfx.muted)); };
   mute.addEventListener('click', () => { sfx.setMuted(!sfx.muted); paint(); if (!sfx.muted) sfx.play('click'); });
   paint();
   // Sit in the UI side column (under the log button) so it never covers player chips.
@@ -164,12 +167,27 @@ if (mute) {
 // Ekran yönlendirici: şimdilik menu (başlangıç ekranı) ve game. Duraklat menüsü yok (AHI-064):
 // oyundayken geri tuşu pause'a gider, pause hemen geri döner; yani geri tuşu oyunda etkisizdir.
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
+
+// Ayarlar (AHI-051) ve profil (M04) ekranları: menü kiti. Ayar değişince tek yerden uygulanır.
+const onSettings = s => { applyDom(s); sfx.setMuted(!s.sound, false); paintMute(); };
+onSettings(getSettings());
+applyTokens();
+const menu = createMenu(document.body, { sfx, buzz });
+defineProfile(menu, { router });
+defineSettings(menu, { router, onSettings, tutorial: () => ui.tutorial });
+const KIT = ['profile', 'settings'];
+router.onChange(({ name, params, dir, from }) => {
+  if (KIT.includes(name)) menu.show(name, params, dir);
+  else if (KIT.includes(from?.name)) menu.hide();
+});
 router.onChange(({ name }) => {
   if (name === 'menu') { clearTimeout(botTimer); ui.showStart(opts => { start(opts); router.go('game'); }); }
   else if (name === 'pause') queueMicrotask(() => router.back());
 });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !e.target.closest?.('input,textarea')) router.back(); });
-router.start();
+// Profil yoksa ilk açılış ekranı; profil varken yenilemede eski "ilk açılış" kaydı menüye döner.
+const hs = history.state;
+router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
 window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };

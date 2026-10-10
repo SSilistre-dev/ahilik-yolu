@@ -1,5 +1,5 @@
 // Pure rules engine. No DOM, no three. State is plain JSON (see SPEC.md contract, v4).
-import { ILKELER, ILKE_IDS, CITIES, BOARD, neighbors, CARDS, HAND_SIZE, AWARD_START, PLAYER_COLORS } from './data.js';
+import { ILKELER, ILKE_IDS, CITIES, BOARD, neighbors, CARDS, HAND_SIZE, AWARD_START, PLAYER_COLORS, AVATAR_IDS } from './data.js';
 
 // ---- rng (mulberry32, state.rng is the internal uint32) ----
 function rnd(s) {
@@ -54,7 +54,7 @@ export function newGame({ players, seed = 1, startIdx = 0 }) {
   s.decks.ticaret = shuffle(s, ids('ticaret'));
   players.forEach((pl, i) => {
     const task = s.decks.ticaret.pop();
-    const p = { name: pl.name, color: PLAYER_COLORS[i], bot: !!pl.bot, pos: cityTile(CITIES[CARDS[task].city].opposite),
+    const p = { name: pl.name, avatar: AVATAR_IDS.includes(pl.avatar) ? pl.avatar : null, color: PLAYER_COLORS[i], bot: !!pl.bot, pos: cityTile(CITIES[CARDS[task].city].opposite),
       hand: [], task, trades: [], badges: 0, pendingText: null };
     s.players.push(p);
     s.tiles[p.pos].occupants.push(i);
