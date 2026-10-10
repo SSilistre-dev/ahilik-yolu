@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newGame, apply } from '../src/game.js';
+import { newGame, apply, legalActions, actor } from '../src/game.js';
 import { botAction } from '../src/bot.js';
 import { viewFor, eventsFor } from '../src/view.js';
 
-const decide = (s) => botAction(s); // AHI-N04 sonrası: botAction(viewFor(s, actor(s), 't'), legalActions(s))
+const decide = (s) => botAction(viewFor(s, actor(s), 't'), legalActions(s));
 
 const GAMES = Number(process.env.VIEW_FUZZ_GAMES ?? 100); // make qa: 500
 const ID = /\b(?:yol|ahlak|ticaret)-[a-z]+-(?:\d+|neg)\b/g;

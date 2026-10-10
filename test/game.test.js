@@ -1,7 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { newGame, legalActions, apply, score } from '../src/game.js';
-import { botAction } from '../src/bot.js';
 import { CARDS, CITIES, HAND_SIZE } from '../src/data.js';
 
 const P2 = [{ name: 'A', bot: false }, { name: 'B', bot: true }];
