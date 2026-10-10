@@ -84,6 +84,16 @@ function setEnd(s, ev, why) {
   log(ev, 'endgame', `Oyun bitiş aşamasına girdi (${why}). Tur ilk oyuncuya kadar tamamlanacak.`);
 }
 
+// Bitiş aşamasından sonra, şu anki oyuncu dahil oynanacak sıra sayısı (AHI-012).
+export const turnsLeft = (s) => ((s.startIdx - s.active + s.players.length - 1) % s.players.length) + 1;
+// Bitiş aşamasını açan neden; durumdan türer (kayıttan devamda da çalışır).
+export function endReason(s) {
+  if (!s.endgame) return null;
+  if (!s.decks.ahlak.length) return 'ahlak';
+  if (!s.decks.ticaret.length) return 'ticaret';
+  return Object.values(s.awards).every((n) => n === 0) ? 'odul' : null;
+}
+
 function moveTo(s, pi, tile) {
   const p = s.players[pi];
   const from = s.tiles[p.pos].occupants;

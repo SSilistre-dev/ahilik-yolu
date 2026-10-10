@@ -1,5 +1,6 @@
-import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS } from './data.js';
+import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS, neighbors } from './data.js';
 import { createTutorial } from './tutorial.js';
+import { turnsLeft, endReason } from './game.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -42,6 +43,50 @@ const actorOf = s => s.pending?.kind === 'trade' ? s.pending.to : s.pending?.kin
 const cardHtml = (id, extra = '', attrs = '', style = '') =>
   `<button class="ay-card ${extra}" ${attrs} style="${style}" aria-label="${esc(cardName(id))}">${img(cardArt(id))}${CARDS[id]?.hasText ? '<span class="ay-scroll">📜</span>' : ''}</button>`;
 
+// Bitiş aşamasında (oyun bitmeden) kalan sıra ve neden; yoksa null (AHI-012).
+export const lastRound = (s) => s.endgame && s.phase !== 'over' ? { left: turnsLeft(s), reason: endReason(s) } : null;
+const LAST_WHY = { ahlak: 'Ahlak kartları bitti.', ticaret: 'Ticaret kartları bitti.', odul: 'Ödül rozetleri bitti.' };
+
+// Geçersiz kare dokunuşunun nedeni (AHI-014); null = geri bildirim verme (bot/perde/geçerli dokunuş).
+// Geçerli dokunuşları tapTile işler; burada yalnız tapTile'ın false döneceği durumlar metin alır.
+export function rejectReason(st, legal, selected, viewer, idx) {
+  const me = st.players[st.active], t = st.tiles[idx];
+  if (!t || st.phase === 'over' || st.pending || me.bot || viewer !== st.active) return null;
+  if (st.phase === 'ahlak') return 'Önce Ahlak Kartı Aç düğmesine dokun.';
+  if (st.phase === 'close') {
+    if (legal.some(a => a.type === 'closeTile' && a.tile === idx)) return null;
+    if (t.kind === 'city') return 'Şehirler kapatılamaz.';
+    if (t.closed) return 'Bu kare zaten kapalı.';
+    if (t.occupants.length) return 'Piyon olan kareyi kapatamazsın.';
+    return `Sadece ${ILKELER[st.pendingClose]?.name ?? ''} karelerinden birini kapatabilirsin.`;
+  }
+  if (st.phase !== 'move') return null;
+  const has = f => legal.some(f), goal = me.task && CITIES[CARDS[me.task].city]?.tile;
+  if (t.closed && has(a => a.type === 'openRoad' && a.tile === idx)) return null;
+  if (idx === goal && has(a => a.type === 'enterCity')) return null;
+  if (st.moveDone || (!has(a => a.type === 'move' || a.type === 'kargo') && has(a => a.type === 'endTurn'))) return 'Hareketin bitti. Turu Bitir\'e dokun.';
+  if (t.closed) return 'Bu yol kapalı. Açmak için aynı ilkeden kartların lazım.';
+  if (t.kind === 'city') return 'Şehre doğrudan gidilmez. Hedef şehre komşu kareye git.';
+  if (idx === me.pos) return null;
+  if (!neighbors(me.pos).includes(idx)) return 'Bu kare uzak. Piyonunun yanındaki bir kareye git.';
+  const sel = selected && !CARDS[selected]?.kargo ? selected : null; // kargo seçiliyken tahta dokunuşu şehir seçmez; metin tanımsız
+  if (selected && !sel) return null;
+  const ok = has(a => a.type === 'move' && a.tile === idx && (!sel || kind(a.card) === kind(sel)));
+  if (ok) return null;
+  const il = ILKELER[t.ilke]?.name ?? '';
+  return sel ? `Bu kare ${il}. Seçtiğin kart ${CARDS[sel].joker ? 'Ahi Evran' : ILKELER[CARDS[sel].ilke]?.name}.` : `Elinde ${il} kartı yok.`;
+}
+
+// Bu cihazda şu an elini görebilecek oyuncu (AHI-017). Tek insanda hep o; çok insanda yalnız karar verici
+// (bekleyen takas/yol sorusu varsa cevap verecek olan) telefonu tutuyorsa. Sırası olan, soru bota gidince de tutmaya devam eder.
+export function nextViewer(st, viewer) {
+  const hs = st.players.map((p, i) => p.bot ? -1 : i).filter(i => i >= 0);
+  if (hs.length === 1) return hs[0];
+  if (st.phase === 'over' || viewer == null) return null;
+  const a = actorOf(st);
+  return viewer === a || (viewer === st.active && st.players[a]?.bot) ? viewer : null;
+}
+
 const SLIDES = [
   { t: '1 · Ahlak kartı aç', imgs: ['ahlak-back', 'ahlak-adaletli'], p: 'Her tur başında bir ahlak kartı çekersin. Olumluysa o ilkenin karelerine rozet konur, olumsuzsa bir kare kapanır.' },
   { t: '2 · Yol kartıyla ilerle', imgs: ['yol-comert', 'yol-ahievran', 'yol-kargo'], p: 'Kartın ilkesiyle eşleşen komşu kareye git. Ahi Evran joker, Kargo seni istediğin şehre uçurur.' },
@@ -56,22 +101,22 @@ const SLIDES = [
 // Called only when a value changed by >= 2px.
 export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   root.classList.add('ay-root');
-  root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-pill"></div>
+  root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-last" hidden></div><div class="ay-pill"></div>
       <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button></div></div>
       <div class="ay-toasts"></div></div>
     <div class="ay-dock"><div class="ay-handle ay-p" data-a="fold"></div><div class="ay-sub ay-p"></div><div class="ay-acts ay-p"></div><div class="ay-fan"></div></div>
     <div class="ay-modal" hidden></div><div class="ay-modal ay-sheetwrap" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div><div class="ay-curtain ay-p" hidden></div>`;
   const $ = s => root.querySelector(s);
-  const hudEl = $('.ay-hud'), goalEl = $('.ay-goal'), chipsEl = $('.ay-chips'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
+  const hudEl = $('.ay-hud'), goalEl = $('.ay-goal'), chipsEl = $('.ay-chips'), lastEl = $('.ay-last'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
     handleEl = $('.ay-handle'), subEl = $('.ay-sub'), actsEl = $('.ay-acts'), fanEl = $('.ay-fan'),
     modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx');
 
   let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null, rpick = [], rkey = '';
-  let wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
+  let bannerSeed = null, wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, startEl = null, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
 
   const tut = createTutorial(root, { art: cardArt, url });
-  const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected, blocked: () => !!st && (needCurtain() || !!st.pending || !!sheet) };
+  const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected, blocked: () => !!st && (needCurtain() || !!st.pending || !!sheet), viewer: () => viewer };
   const act = a => { if (a.type === 'move' || a.type === 'kargo') wiggled = true; passAsk = false; sheet = null; trade = {}; selected = null; rpick = []; rkey = ''; onAction(a); };
   const has = t => legal.some(a => a.type === t);
   const actorIdx = () => actorOf(st);
@@ -141,7 +186,21 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
         <div class="r2">${stats}${t
           ? img(cardArt(p.task), 'ay-note', true).replace('alt=""', `alt="Görev" title="Görev: ${esc(cityName(t.city))} ${t.value}M"`) : '<span class="ay-note none">–</span>'}</div></div>`;
     }).join('');
-    renderPill(); renderGoal();
+    renderPill(); renderGoal(); renderLast();
+  }
+  function renderLast() {
+    const lr = lastRound(st);
+    lastEl.hidden = !lr;
+    if (lr) lastEl.textContent = lr.left === 1 && human() ? 'Son sıran!' : lr.left === 1 ? 'Son tur · son sıra' : `Son tur · ${lr.left} sıra kaldı`;
+  }
+  function lastBanner(why) {
+    const el = document.createElement('div');
+    el.className = 'ay-banner';
+    el.innerHTML = `<b>SON TUR!</b><span>${esc(LAST_WHY[why] ?? '')}</span><span>Herkes aynı sayıda oynasın diye tur tamamlanacak.</span>`;
+    const gone = () => el.remove();
+    el.addEventListener('click', gone);
+    fxEl.append(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(gone, 300); }, 3000);
   }
   const bump = pIdx => {
     for (const s of ['.ay-bdg', '.ay-mny']) {
@@ -316,13 +375,27 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   }
 
   // ---------- Toasts + log drawer ----------
-  function toast(text) {
+  function toast(text, cls = '') {
     log.push(text); log = log.slice(-80);
     const t = document.createElement('div');
-    t.className = 'ay-toast'; t.textContent = text;
+    t.className = `ay-toast ${cls}`; t.textContent = text;
     toastEl.replaceChildren(t); // one toast at a time, newest wins
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.remove(), 2500);
+  }
+  // Geçersiz dokunuş: kırmızı halka (pt = viewport noktası) + tek toast. Taze reddi true döner (ses/titreşim çağıranda).
+  let lastReject = -1e9;
+  function reject(idx, text, pt) {
+    if (pt) {
+      const o = origin(), r = document.createElement('div');
+      r.className = 'ay-nope'; r.textContent = '✕';
+      r.style.left = `${pt.x - o.left - 28}px`; r.style.top = `${pt.y - o.top - 28}px`;
+      fxEl.append(r);
+      setTimeout(() => r.remove(), 520);
+    }
+    const now = Date.now(), fresh = now - lastReject >= 400;
+    if (fresh) { lastReject = now; toast(text, 'nope'); }
+    return fresh;
   }
   function renderDrawer() {
     drawerEl.innerHTML = `<div class="ay-sheet ay-p"><div class="ay-sheethead"><b>Oyun kaydı</b><button class="ay-btn sm" data-a="log">Kapat</button></div>
@@ -477,7 +550,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   // Event -> toast metni (null = toast yok, yalnız kayıt). Modal/perde zaten gösteriyorsa tekrar etme.
   function evText(ev) {
     const human_ = i => !st.players[i]?.bot;
-    if (ev.type === 'badgePlaced') return null;
+    if (ev.type === 'badgePlaced' || ev.type === 'endgame') return null; // endgame: şerit + çip gösterir, kayda düşer
     if (ev.type === 'nearCity') return human_(ev.pIdx) ? 'Şehre komşusun! Şehre girebilirsin.' : null;
     if (ev.type === 'refill') return human_(ev.pIdx) && ev.n > 0 ? (humans() > 1 ? `${nm(ev.pIdx)} eli 6 karta tamamlandı (+${ev.n})` : `Elin 6 karta tamamlandı (+${ev.n})`) : null;
     if (ev.type === 'tradeDeclined') return `${nm(ev.pIdx)} takası kabul etmedi`;
@@ -512,21 +585,20 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     render(state, legalActions = [], events = []) {
       st = state; legal = legalActions;
       if (st.seed !== seed) {
-        seed = st.seed; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
+        seed = st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
         rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
         log = []; lastActive = -1; lastHl = ''; handOpen = true; selected = null; passAsk = false;
         clearTimeout(celebrate); clearTimeout(toastTimer);
         toastEl.replaceChildren(); fxEl.replaceChildren(); drawerEl.hidden = true;
       }
-      // Tek insan varsa telefon hep onda; çok insanda perde kalkınca viewer atanır.
-      const hs = st.players.map((p, i) => p.bot ? -1 : i).filter(i => i >= 0);
-      if (hs.length === 1) viewer = hs[0];
-      else if (viewer != null && st.players[viewer]?.bot) viewer = null;
+      // Tek insan varsa telefon hep onda; çok insanda perde kalkınca viewer atanır, karar verici değişince düşer.
+      viewer = nextViewer(st, viewer);
       if (st.active !== lastActive) { lastActive = st.active; selected = null; passAsk = false; sheet = null; trade = {}; }
       if (selected && ((st.phase !== 'move' && !(st.phase === 'ahlak' && CARDS[selected]?.kargo)) || !st.players[viewer ?? -1]?.hand.includes(selected))) selected = null;
       let k = 0;
       for (const ev of events) {
         { const tx = evText(ev); if (tx) toast(tx); else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
+        if (ev.type === 'endgame' && st.phase !== 'over' && bannerSeed !== seed) { bannerSeed = seed; lastBanner(endReason(st)); }
         if (ev.type === 'ahlak') {
           const id = ev.empty ? null : (ev.card || st.decks?.ahlakDiscard?.at(-1));
           if (id) reveal(id, { caption: ev.text });
@@ -542,6 +614,8 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       tut.update(st, legal, events, tutEls);
     },
     tutorial: tut,
+    rejectReason: idx => !st || sheet ? null : rejectReason(st, legal, selected, viewer, idx),
+    reject,
     // Board tap forwarded by integrator. Returns true if it triggered an action.
     tapTile(idx) {
       if (!st || !human() || sheet) return false;

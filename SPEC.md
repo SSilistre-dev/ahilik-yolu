@@ -362,6 +362,15 @@ Kullanıcı kararı (2026-10-10): kural kitabına göre uygula. Bu bölüm v1–
   Hepsi reddederse ya da toplam 4'e ulaşmazsa `roadFailed`, kimse kart kaybetmez.
 - Tur başına en çok 2 yol çağrısı: `roadTries < 2` iken `openRoad` yasaldır; `apply` aksi hâlde fırlatır. Kitapta yok; çevrimiçi rahatsız etmeyi önleyen dijital önlemdir (insan ve bot için aynı).
 
+## v6: Oyun içi UX (AHI-012/014/017/020)
+
+- `game.js`: `turnsLeft(state)` = `((startIdx - active + n - 1) mod n) + 1` (bitiş aşamasında, şu anki oyuncu dahil kalan sıra); `endReason(state)` -> `'ahlak' | 'ticaret' | 'odul' | null` (`endgame` yoksa `null`; durumdan türer, olay alanı yok).
+- `ui.js`: `lastRound(state)` -> `{ left, reason } | null` (`endgame && phase !== 'over'`). Şerit `endgame` olayında oyun başına bir kez, oyun aynı hamlede bittiyse hiç; HUD'da kalıcı `.ay-last` çipi.
+- `ui.js`: `rejectReason(state, legal, selected, viewer, idx)` -> Türkçe neden metni | `null` (bot sırası, perde, bekleyen soru, geçerli dokunuş = `null`). Reddedilen dokunuş: kırmızı halka + tek toast; 400 ms içinde ikinci reddedişte yalnız halka. `tapTile` sözleşmesi değişmez.
+- `ui.js`: `nextViewer(state, viewer)` — telefonu tutan insanın eli yalnız karar verici (bekleyen takas/yol sorusunda cevap verecek oyuncu) ya da sırası olan oyuncuysa görünür; bot ya da başka insan sırasında `null` (`Eller gizli`). Tek insanda hep o insan. Soru bota gidince sırası olan oyuncu telefonu tutmaya devam eder.
+- `tutorial.js`: `viewerPlayer(state, viewer)` — eğitim/yardım örnek kartı için oyuncu; çok insanlı oyunda telefon kimsede değilse `null` (jenerik örnek kartlar).
+- `sfx.js`: `createSfx({ fetch, AudioCtx, Audio, now, doc, nav })` (hepsi isteğe bağlı). Başarısız yükleme önbelleğe yazılmaz: 2 sn sonra yeniden, en çok 3 deneme. `unlock()` bir kez `navigator.audioSession.type = 'playback'` ve 0,1 sn sessiz WAV çalar. Askıdaki (`suspended`/`interrupted`) bağlamda `play` `resume()` çağırır, o ses atlanır. Yeni ses adı `nope` (`close` dosyasını okur).
+
 ## Bilinçli sapmalar ve notlar (kitap ↔ dijital)
 
 Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
