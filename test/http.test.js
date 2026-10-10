@@ -21,7 +21,7 @@ async function withServer(fn) {
     });
     r.on('error', reject); r.end();
   });
-  try { await fn(req); } finally { await new Promise(r => srv.close(r)); }
+  try { await fn(req); } finally { srv.closeAllConnections(); await new Promise(r => srv.close(r)); }
 }
 
 test('http: GET /api/health 200 ve ok:true', () => withServer(async req => {

@@ -16,9 +16,10 @@ test('lastturn: formula table', () => {
   assert.equal(turnsLeft(mk(3, 2, 1)), 1);
 });
 
-test('lastturn: matches 1500 bot games', () => {
+const SEEDS = Number(process.env.LASTTURN_SEEDS ?? 40); // make qa: 300 (1500 oyun)
+test('lastturn: turnsLeft matches bot games', () => {
   let opened = 0;
-  for (let n = 2; n <= 6; n++) for (let seed = 1; seed <= 300; seed++) {
+  for (let n = 2; n <= 6; n++) for (let seed = 1; seed <= SEEDS; seed++) {
     let s = newGame({ players: Array.from({ length: n }, (_, i) => ({ name: `B${i}`, bot: true })), seed, startIdx: seed % n });
     let want = null, ends = 0, extra = 0;
     for (let i = 0; i < 20000 && s.phase !== 'over'; i++) {
@@ -39,7 +40,7 @@ test('lastturn: matches 1500 bot games', () => {
       assert.ok(extra <= 1);
     }
   }
-  assert.ok(opened > 1000, `bitiş aşaması ${opened} oyunda açıldı`);
+  assert.ok(opened > SEEDS * 5 * 0.66, `bitiş aşaması ${opened} oyunda açıldı`);
 });
 
 test('lastturn: endReason', () => {
