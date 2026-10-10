@@ -8,7 +8,7 @@
 <script type="module">
 import { createUI } from '../src/ui.js';
 // Rehber yalnız ?tut ile açılır (aksi halde dev önizlemeyi kapatmasın).
-try { if (!location.search.includes('tut')) localStorage.setItem('ahilik.tutorial.done', '1'); else localStorage.removeItem('ahilik.tutorial.done'); } catch {}
+try { if (!location.search.includes('tut')) localStorage.setItem('ahilik.flags', '{"v":1,"d":{"tutorialDone":true}}'); else localStorage.removeItem('ahilik.flags'); } catch {}
 const ui = createUI(document.getElementById('ov'), {
   onAction: a => console.log('onAction', JSON.stringify(a)),
   onTileHighlight: t => console.log('onTileHighlight', JSON.stringify(t)),
