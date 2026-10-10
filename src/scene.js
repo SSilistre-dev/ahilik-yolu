@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { ILKELER, CITIES, BOARD, neighbors } from './data.js';
 import { MODELS, CARD_ART } from './assets.js';
 
@@ -315,24 +316,24 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   // ----- pawns -----
   const clips = {};
   function makePawn(i, color) {
-    const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS['pawn' + (i % 4)], g = loaded['pawn' + (i % 4)];
+    const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS['pawn' + (i % 4)], g = loaded['pawn' + (i % 4)], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
     const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.2, 0.22, 0.05, 24), true), color), paint(norm(new THREE.TorusGeometry(0.205, 0.014, 6, 28).rotateX(Math.PI / 2).translate(0, 0.025, 0), true), 0xfff4d6)]), procMat);
     disc.receiveShadow = true; disc.position.y = 0.025; body.position.y = 0.04;
     const pw = { root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false };
     const characterOk = g && (() => {
       try {
-        const skins = []; g.scene.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
+        const skins = []; model.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
         if (!skins.length) return false;
         const geos = skins.map((s) => { const c = s.geometry.clone(); for (const k of Object.keys(c.attributes)) if (!['position', 'normal', 'uv', 'skinIndex', 'skinWeight'].includes(k)) c.deleteAttribute(k); return c.index ? c.toNonIndexed() : c; });
         const mat = lam(0xffffff, { map: [].concat(skins[0].material)[0].map });
         const mesh = new THREE.SkinnedMesh(mergeGeometries(geos), mat);
         for (const s of skins) s.parent.remove(s);
-        g.scene.add(mesh); mesh.bind(skins[0].skeleton, skins[0].bindMatrix);
+        model.add(mesh); mesh.bind(skins[0].skeleton, skins[0].bindMatrix);
         mesh.castShadow = true; mesh.frustumCulled = false;
-        g.scene.scale.setScalar(cfg.scale); body.add(g.scene);
+        model.scale.setScalar(cfg.scale); body.add(model);
         const a = loaded.anims;
         if (a && a.animations.length) {
-          pw.mixer = new THREE.AnimationMixer(g.scene);
+          pw.mixer = new THREE.AnimationMixer(model);
           const find = (n) => a.animations.find((c) => c.name === n);
           if (find('Idle_A')) { pw.idle = pw.mixer.clipAction(find('Idle_A')); pw.idle.time = Math.random() * 2; pw.idle.play(); }
           if (find('Walking_A')) { pw.walk = pw.mixer.clipAction(find('Walking_A')); pw.walk.setEffectiveWeight(0); pw.walk.play(); }
@@ -607,6 +608,10 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     });
     scene.clear(); renderer.dispose();
   }
+  const pawnInfo = () => pawns.map((p, i) => {
+    let skinned = 0; p.body.traverse((o) => { if (o.isSkinnedMesh) skinned++; });
+    return { i, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i) };
+  });
   const info = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
-  return { ready, render, setInsets, projectTile, dispose, info }; // info(): dev-only stats
+  return { ready, render, setInsets, projectTile, dispose, info, pawnInfo }; // info(): dev-only stats
 }
