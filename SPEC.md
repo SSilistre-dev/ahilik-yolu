@@ -363,6 +363,7 @@ Kullanıcı kararı (2026-10-10): kural kitabına göre uygula. Bu bölüm v1–
 
 Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
 
+- **Yol çağrısı sınırı (kural 16, s.4).** Kitapta sınır yoktur. Dijitalde aktif oyuncu bir turda en çok 2 yol açma çağrısı yapabilir (`MAX_ROAD_CALLS`). Gerekçe: her çağrı diğer oyunculara soru penceresi açar; sınırsız tekrar çevrimiçi oyunda rahatsız etme yolu olur (AHI-008).
 - **Takas koşulu (kural 25, s.4).** Kitap takası "ihtiyacı olan yol kartı yoksa" şartına bağlar. Dijitalde aktif oyuncu `!moveDone` iken,
   ilerleyebiliyor olsa bile takas teklif edebilir. Bilinçli gevşetmedir: "ihtiyaç" öznel, karşı taraf reddedebilir, aynı tur aynı (oyuncu, tür)
   teklifi tekrarlanamaz. Testle sabitlendi: `test/takas-gevsetme.test.js`.
