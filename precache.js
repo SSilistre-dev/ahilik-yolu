@@ -12,8 +12,10 @@ self.SHELL_FILES = [
   "src/pwa.js",
   "src/scene.js",
   "src/sfx.js",
+  "src/store.js",
   "src/tutorial.js",
   "src/ui.js",
+  "src/view.js",
 ];
 self.ASSET_URLS = [
   "assets/cards/ahlak-adaletli-neg.jpg",

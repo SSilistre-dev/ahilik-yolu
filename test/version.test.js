@@ -16,14 +16,11 @@ export function checkVersions({ html, sw, files, sources }) {
   if (!found.length) errs.push('index.html: hiç ?v= yok');
   for (const v of new Set(found)) if (v !== swV) errs.push(`index.html ?v=${v} ama sw.js V=${swV}`);
   const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)?.[1] ?? '{"imports":{}}').imports;
-  const names = (sw.match(/\.\.\.\[([^\]]+)\]\.map/)?.[1] ?? '').split(',').map((s) => s.trim().replace(/['"]/g, '')).filter(Boolean);
   for (const f of files) {
     const key = `./src/${f}`;
     if (map[key] !== `${key}?v=${swV}`) errs.push(`importmap: ${key} -> ${map[key] ?? 'YOK'} (beklenen ${key}?v=${swV})`);
-    if (!names.includes(f.replace(/\.js$/, ''))) errs.push(`sw.js PRECACHE modül listesinde yok: ${f}`);
   }
-  for (const n of names) if (!files.includes(`${n}.js`)) errs.push(`sw.js listesinde var ama src/ içinde yok: ${n}.js`);
-  if (!sw.includes('`./style.css?v=${V}`')) errs.push('sw.js: style.css?v=${V} precache satırı yok');
+  // Kabuk modül listesi precache.js'te üretilir; test/precache.test.js denetler.
   if (!/import\(\s*['"]\.\/src\/main\.js['"]\s*\)/.test(html)) errs.push('index.html: satır içi `import("./src/main.js")` yok (giriş modülü importmap\'ten geçmeli)');
   for (const [f, code] of Object.entries(sources)) for (const m of code.matchAll(/(?:from|import)\s*['"](\.\/[^'"]+)['"]/g)) {
     if (!map[`./src/${m[1].slice(2)}`]) errs.push(`src/${f}: ${m[1]} importmap'te yok (sürümsüz yüklenir)`);
