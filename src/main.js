@@ -9,6 +9,7 @@ import { createSfx } from './sfx.js';
 
 import { goalTile, pathTo } from './path.js';
 import { CARDS } from './data.js';
+import { initPwa } from './pwa.js';
 
 const BOT_DELAY = 700;
 const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
@@ -156,3 +157,5 @@ ui.showStart(start);
 
 // Debug handle for manual/CDP testing.
 window.__ahilik = { ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+
+initPwa();

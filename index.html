@@ -53,7 +53,8 @@
       "./src/ui.js": "./src/ui.js?v=15",
       "./src/tutorial.js": "./src/tutorial.js?v=15",
       "./src/sfx.js": "./src/sfx.js?v=15",
-      "./src/assets.js": "./src/assets.js?v=15"
+      "./src/assets.js": "./src/assets.js?v=15",
+      "./src/pwa.js": "./src/pwa.js?v=15"
     }
   }
   </script>
@@ -85,14 +86,6 @@
         : 'Bu cihazda 3 boyutlu grafik çalışmıyor. Başka bir tarayıcı dene (Chrome ya da Safari).', err);
     }
     import('./src/main.js').catch(bootError);
-  </script>
-  <script>
-    try {
-      const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-      if (standalone) screen.orientation?.lock?.('portrait').catch(() => {});
-      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
-        navigator.serviceWorker.register('sw.js').catch(() => {});
-    } catch {}
   </script>
 </body>
 </html>
