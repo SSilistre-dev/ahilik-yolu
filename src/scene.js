@@ -509,7 +509,7 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   function kick() { if (!raf && !disposed) raf = requestAnimationFrame(frame); }
 
   // ----- state sync -----
-  let first = true, pending = null;
+  let first = true, pending = null, seedSeen = null;
   function hop(pw, i, to) {
     const from = pw.root.position.clone(), d = from.distanceTo(to);
     const dur = d < 0.5 ? 220 : d < 1.8 ? 400 : Math.min(900, 400 + d * 120), h = d < 0.5 ? 0.03 : d < 1.8 ? 0.14 : Math.min(0.8, 0.3 + d * 0.18), walk = d >= 0.5;
@@ -523,11 +523,14 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   }
   function render(state, { highlight = [], goal = null, path = [] } = {}) { // any `focus` option is ignored: camera always frames the board
     if (!built) { pending = [state, { highlight, goal, path }]; hl = highlight; pulse = highlight.length > 0; kick(); return; }
+    const fresh = state.seed !== seedSeen; seedSeen = state.seed; // new game: snap, no animations
+    if (fresh) { first = true; anims.clear(); }
     setGoal(goal); setPath(state, path, goal);
     state.players.forEach((pl, i) => {
       const to = pawnTarget(state, i);
       let pw = pawns[i];
       if (!pw) { pw = pawns[i] = makePawn(i, pl.color); pw.root.position.copy(to); pw.target.copy(to); }
+      else if (fresh) { setWalk(pw, false); pw.yaw = pw.yawT = 0; pw.root.position.copy(to); pw.target.copy(to); }
       else if (!pw.target.equals(to)) hop(pw, i, to);
     });
     while (pawns.length > state.players.length) { const p = pawns.pop(); scene.remove(p.root); p.mixer && p.mixer.stopAllAction(); }
