@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRoom, receive, join, disconnect, tick, nextDeadline, TIMING } from '../server/room.js';
+import { createRoom, receive, join, disconnect, tick, nextDeadline, resumeRoom, TIMING } from '../server/room.js';
 import { actor } from '../src/game.js';
 import { mkRand, fakeJoin, startedRoom, runUntil, playOut } from './helpers/rand.mjs';
 
@@ -265,4 +265,20 @@ test('timing: botMs, graceMs ve idleMs createRoom\'a verilen değerle geçersiz 
   const plain = JSON.parse(JSON.stringify(room)); // anlık görüntüyle yüklenir
   assert.deepEqual(plain.timing, room.timing);
   assert.equal(createRoom({ code: 'K7M2QX', now: T0 }).timing, undefined); // varsayılan: TIMING geçerli
+});
+
+test('resumeRoom: diskten yüklenen oyun durur (botAt yok), 30 sn sonra insanlar takeover, geri gelen koltuğunu alır', () => {
+  const { room, tokens } = startedRoom({ humans: 2, bots: 1, options: { startSeat: 2 } });
+  assert.notEqual(room.timers.botAt, null);
+  const loaded = JSON.parse(JSON.stringify(room));
+  resumeRoom(loaded, T0 + 5000);
+  assert.deepEqual(loaded.seats.filter(s => !s.bot).map(s => [s.online, s.lostAt]), [[false, T0 + 5000], [false, T0 + 5000]]);
+  assert.equal(loaded.timers.botAt, null);
+  assert.deepEqual(tick(loaded, T0 + 20_000, rand), { out: [], changed: false, expired: false }); // kimse yokken bot oynamaz
+  assert.equal(nextDeadline(loaded), T0 + 5000 + TIMING.graceMs);
+  tick(loaded, T0 + 5000 + TIMING.graceMs, rand);
+  assert.equal(loaded.seats[0].takeover, true);
+  join(loaded, { token: tokens[0] }, T0 + 40_000, rand);
+  assert.equal(loaded.seats[0].takeover, false);
+  assert.notEqual(loaded.timers.botAt, null);
 });

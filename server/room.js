@@ -265,6 +265,12 @@ export function disconnect(room, token, now, rand) {
   return { out: maybeRematch(room, now, rand) ?? gameOut(room, [], now), changed: true };
 }
 
+// Diskten yüklenen oda: hiç soket yok. İnsanlar çevrimdışı sayılır (kopma süresi şimdiden işler), zamanlayıcılar yeniden kurulur.
+export function resumeRoom(room, now) {
+  for (const s of room.seats) if (isHuman(s)) Object.assign(s, { online: false, lostAt: now });
+  if (room.phase === 'game') reschedule(room, now);
+}
+
 // ---- Oyun döngüsü (N07) ----
 const onlineHumans = room => humans(room).filter(s => s.online);
 const pushLog = (g, events) => { g.log.push(...events); if (g.log.length > 200) g.log.splice(0, g.log.length - 200); };

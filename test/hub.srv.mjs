@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/index.js';
 import { createHub } from '../server/hub.js';
+import { botAction } from '../src/bot.js';
 
 const booted = [];
 async function boot(dir, env = {}) {
@@ -84,8 +85,67 @@ test('ikinci istemci katılır, ilk istemci lobby güncellemesi alır', async ()
   a.ws.close(); c.ws.close();
 });
 
-test('addBot + start: bot sırasında istemci mesaj göndermeden version artar (zamanlayıcı çalışıyor)', { skip: 'N07/N08 bekleniyor' }, () => {});
-test('act: sırası gelen istemci geçerli aksiyon gönderir, iki istemci de yeni version alır', { skip: 'N07/N08 bekleniyor' }, () => {});
+const FAST = { BOT_DELAY_MS: '20', DISCONNECT_GRACE_MS: '400' };
+const isGame = m => m.t === 'game';
+// 2 insan (Ali host, Veli) + 2 bot, oyun başlamış. startSeat: 0 Ali, 2 ilk bot.
+async function startedGame(b, startSeat) {
+  const code = await newRoom(b);
+  const a = client(b, code), c = client(b, code);
+  const wa = await a.hello('Ali'), wc = await c.hello('Veli');
+  c.send({ v: 1, t: 'ready', on: true });
+  a.send({ v: 1, t: 'addBot' }); a.send({ v: 1, t: 'addBot' });
+  a.send({ v: 1, t: 'setOptions', startSeat });
+  await a.next(m => m.t === 'lobby' && m.seats.length === 4 && m.seats[1].ready && m.options.startSeat === startSeat);
+  a.send({ v: 1, t: 'start' });
+  return { code, a, c, wa, wc };
+}
+
+test('addBot + start: bot sırasında istemci mesaj göndermeden version artar (zamanlayıcı çalışıyor)', async () => {
+  const b = await boot(tmp(), FAST);
+  const { a, c } = await startedGame(b, 2);
+  const g1 = await a.next(isGame);
+  assert.equal(g1.version, 1);
+  const g2 = await a.next(m => isGame(m) && m.version > 1);
+  assert.ok(g2.version > 1);
+  assert.ok((await c.next(m => isGame(m) && m.version > 1)).version > 1);
+  a.ws.close(); c.ws.close();
+});
+
+test('act: sırası gelen istemci geçerli aksiyon gönderir, iki istemci de yeni version alır', async () => {
+  const b = await boot(tmp(), FAST);
+  const { a, c } = await startedGame(b, 0);
+  const g = await a.next(m => isGame(m) && m.legal.length > 0);
+  assert.equal((await c.next(isGame)).legal.length, 0, 'sırası olmayana legal yok');
+  a.send({ v: 1, t: 'act', base: g.version, action: g.legal[0] });
+  const na = await a.next(m => isGame(m) && m.version > g.version), nc = await c.next(m => isGame(m) && m.version > g.version);
+  assert.equal(na.version, nc.version);
+  a.ws.close(); c.ws.close();
+});
+
+test('tam oyun: 2 insan + 2 bot sunucuda over\'a kadar oynanır, rematch yeni oyun başlatır', { timeout: 120000 }, async () => {
+  const b = await boot(tmp(), FAST);
+  const { a, c } = await startedGame(b, 0);
+  let last = null;
+  // İnsan gibi oyna: her game mesajına 60 ms sonra bot politikasıyla yanıt (yoksa 20 mesaj/sn sınırına takılır).
+  const play = (cl, m) => setTimeout(() => { if (cl.ws.readyState === 1) cl.send({ v: 1, t: 'act', base: m.version, action: botAction(m.view, m.legal, 'medium') ?? m.legal[0] }); }, 60);
+  for (const cl of [a, c]) {
+    const first = cl.msgs.filter(isGame).at(-1);
+    if (first?.legal.length) play(cl, first);
+    cl.ws.addEventListener('message', e => {
+      const m = JSON.parse(e.data);
+      if (m.t === 'error' && m.code !== 'stale') last = last ?? `${m.code}: ${m.msg}`;
+      if (m.t === 'game' && m.legal.length) play(cl, m);
+    });
+  }
+  const over = await a.next(m => isGame(m) && m.view.phase === 'over', 100000);
+  assert.equal(last, null);
+  assert.ok(over.version > 20);
+  a.send({ v: 1, t: 'rematch' }); c.send({ v: 1, t: 'rematch' });
+  const again = await a.next(m => isGame(m) && m.gameId !== over.gameId);
+  assert.equal(again.version, 1);
+  assert.notEqual(again.view.phase, 'over');
+  a.ws.close(); c.ws.close();
+});
 
 test('aynı token ikinci soketten: eskisi replaced ile 4007 kapanır, koltuk aynı', async () => {
   const b = await boot(tmp());
@@ -203,4 +263,50 @@ test('hub yeniden başlatma: eski token ile hello -> aynı koltuk ve lobi durumu
   c2.ws.close();
 });
 
-test('hub yeniden başlatma: kopan insan 30 sn sonra takeover', { skip: 'N07/N08 bekleniyor' }, () => {});
+test('kopan insan grace sonrası takeover (bot devralır), geri gelince koltuğunu alır', async () => {
+  const b = await boot(tmp(), FAST);
+  const { code, a, c, wc } = await startedGame(b, 2);
+  await a.next(isGame);
+  c.ws.close();
+  const g = await a.next(m => isGame(m) && m.seats[1].takeover);
+  assert.equal(g.seats[1].online, false);
+  const c2 = client(b, code);
+  await c2.hello('Veli', { token: wc.you.token });
+  const back = await c2.next(isGame);
+  assert.equal(back.seats[1].takeover, false);
+  assert.equal(back.seats[1].online, true);
+  a.ws.close(); c2.ws.close();
+});
+
+test('hub yeniden başlatma: kopan insan 30 sn sonra takeover', async () => {
+  const dir = tmp();
+  const b = await boot(dir, FAST);
+  const { code, a, c, wa, wc } = await startedGame(b, 2);
+  await a.next(m => isGame(m) && m.version > 1);
+  await b.stop();
+  const b2 = await boot(dir, FAST);
+  const c2 = client(b2, code);
+  await c2.hello('Veli', { token: wc.you.token });
+  const g = await c2.next(m => isGame(m) && m.seats[0].online === false && m.seats[0].takeover);
+  assert.equal(g.seats[1].online, true);
+  assert.equal(g.seats[1].takeover, false);
+  // oyun yalnız bir insan bağlıyken sürer: version artar
+  const v = g.version;
+  await c2.next(m => isGame(m) && m.version > v);
+  const a2 = client(b2, code);
+  await a2.hello('Ali', { token: wa.you.token });
+  assert.equal((await a2.next(isGame)).seats[0].takeover, false);
+  c2.ws.close(); a2.ws.close();
+});
+
+test('oda ömrü (ROOM_IDLE_MS): dolunca bağlı istemci expired + 4010 alır, oda ve dosya silinir', async () => {
+  const dir = tmp();
+  const b = await boot(dir, { ROOM_IDLE_MS: '300' });
+  const code = await newRoom(b);
+  const a = client(b, code);
+  await a.hello('Ali');
+  assert.equal((await a.next(m => m.t === 'error')).code, 'expired');
+  assert.equal(await a.closedP, 4010);
+  assert.equal(b.hub.has(code), false);
+  assert.ok(!existsSync(path.join(dir, 'rooms', code + '.json')));
+});

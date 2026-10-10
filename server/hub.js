@@ -7,16 +7,17 @@ import * as R from './room.js';
 
 const CLOSE = { badMsg: 4000, full: 4001, started: 4002, notFound: 4003, version: 4005, kicked: 4006, replaced: 4007, rate: 4008, expired: 4010, tooBig: 1009 };
 const FILE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}\.json$/;
-const MAX_SOCKETS_PER_ROOM = 12, HELLO_MS = 10_000, PING_MS = 15_000, RATE_PER_S = 20, IDLE_MS = 24 * 3600_000, EMPTY_MS = 3600_000;
+const MAX_SOCKETS_PER_ROOM = 12, HELLO_MS = 10_000, PING_MS = 15_000, RATE_PER_S = 20;
 const cryptoRand = () => randomInt(0, 2 ** 32) / 2 ** 32;
 const errMsg = (code, msg) => JSON.stringify({ v: 1, t: 'error', code, msg });
 
 export function createHub({ dir, now = Date.now, rand = cryptoRand, env = process.env } = {}) {
   const roomsDir = path.join(dir, 'rooms');
   const maxRooms = Number(env.MAX_ROOMS ?? 500);
-  const timing = Object.fromEntries([['botDelayMs', env.BOT_DELAY_MS], ['disconnectGraceMs', env.DISCONNECT_GRACE_MS], ['roomIdleMs', env.ROOM_IDLE_MS]]
+  const timing = Object.fromEntries([['botMs', env.BOT_DELAY_MS], ['graceMs', env.DISCONNECT_GRACE_MS], ['idleMs', env.ROOM_IDLE_MS]]
     .filter(([, v]) => v !== undefined && v !== '').map(([k, v]) => [k, Number(v)]));
-  const idleMs = Number(env.ROOM_IDLE_MS || IDLE_MS);
+  if (timing.botMs !== undefined) timing.botAhlakMs = timing.botMs * 2; // tek düğme: ahlak kartı sonrası bekleme botMs'in 2 katı
+  let closed = false;
   const rooms = new Map(); // kod -> { room, sockets:Set<ws>, timer }
   const conns = new WeakMap(); // ws -> { entry, token, alive, missed, win, count, badJson, helloTimer }
   const wss = new WebSocketServer({ noServer: true, maxPayload: 8192 });
@@ -24,12 +25,11 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
 
   // --- disk ---
   function save(e) {
+    if (closed) return;
     const tmp = file(e.room.code) + '.tmp';
     try { writeFileSync(tmp, JSON.stringify({ schema: 1, savedAt: now(), room: e.room })); renameSync(tmp, file(e.room.code)); }
     catch (err) { console.error('snapshot yazılamadı', e.room.code, err.code ?? err.message); } // ponytail: senkron yazma; p99 bozulursa 250 ms gecikmeli yazma
   }
-  // ponytail: tick yoksa (N08 öncesi) yalnız boşta/boş oda süpürmesi; tick varsa o karar verir.
-  const resume = R.resumeRoom ?? ((room, t) => { for (const s of room.seats) if (!s.bot) { s.online = false; s.lostAt = t; } });
 
   mkdirSync(roomsDir, { recursive: true });
   for (const f of readdirSync(roomsDir)) {
@@ -38,7 +38,7 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
     try {
       const snap = JSON.parse(readFileSync(path.join(roomsDir, f), 'utf8'));
       if (snap?.schema !== 1 || snap.room?.code !== f.slice(0, 6)) { console.warn('bilinmeyen şema, atlandı', f); continue; }
-      resume(snap.room, now());
+      R.resumeRoom(snap.room, now());
       const e = { room: snap.room, sockets: new Set(), timer: null };
       rooms.set(snap.room.code, e);
     } catch { renameSync(path.join(roomsDir, f), path.join(roomsDir, f + '.bozuk')); console.warn('bozuk anlık görüntü', f); }
@@ -63,17 +63,16 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
   }
   function schedule(e) {
     clearTimeout(e.timer);
-    const t = typeof R.nextDeadline === 'function' ? R.nextDeadline(e.room) : null;
+    if (closed) return; // close() sonrası soket kapanışları zamanlayıcıyı geri kurmasın
+    const t = R.nextDeadline(e.room);
     if (t == null) return;
     e.timer = setTimeout(() => fire(e), Math.max(0, t - now()));
   }
   function fire(e) {
     if (!rooms.has(e.room.code)) return;
     const r = R.tick(e.room, now(), rand);
-    if (r.expired) return remove(e);
-    if (r.changed) save(e);
-    dispatch(e, r.out ?? []);
-    schedule(e);
+    if (r.expired) { dispatch(e, r.out); return remove(e); }
+    commit(e, r);
   }
   // r = { out, changed } (join'de ayrıca ok/token/error)
   function commit(e, r) {
@@ -92,7 +91,7 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
       clearTimeout(st.helloTimer); e.sockets.delete(ws);
       if (st.token === null || !rooms.has(e.room.code)) return;
       if ([...e.sockets].some(o => conns.get(o).token === st.token)) return; // koltuk başka sokete geçti
-      commit(e, R.disconnect(e.room, st.token, now()));
+      commit(e, R.disconnect(e.room, st.token, now(), rand));
     });
     ws.on('error', () => {});
   }
@@ -130,10 +129,6 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
       if (!st.alive && ++st.missed >= 2) { ws.terminate(); continue; }
       st.alive = false; ws.ping();
     }
-    if (typeof R.tick !== 'function') for (const e of [...rooms.values()]) { // süpürme
-      const hasHuman = e.room.seats.some(s => !s.bot);
-      if (e.sockets.size === 0 && now() - e.room.lastActivity > (hasHuman ? idleMs : EMPTY_MS)) remove(e);
-    }
   }, PING_MS);
   ping.unref();
   for (const e of rooms.values()) schedule(e);
@@ -163,7 +158,9 @@ export function createHub({ dir, now = Date.now, rand = cryptoRand, env = proces
     stats: () => ({ rooms: rooms.size, sockets: [...rooms.values()].reduce((n, e) => n + e.sockets.size, 0) }),
     close() {
       clearInterval(ping);
-      for (const e of rooms.values()) { clearTimeout(e.timer); save(e); for (const ws of e.sockets) ws.close(1001); }
+      for (const e of rooms.values()) { clearTimeout(e.timer); save(e); }
+      closed = true; // sonrası: ne yazma ne zamanlayıcı (kapanış olayları yeni hub'ın dosyasını ezmesin)
+      for (const e of rooms.values()) for (const ws of e.sockets) ws.close(1001);
       wss.close();
     },
   };

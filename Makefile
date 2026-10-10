@@ -26,6 +26,6 @@ PORT ?= 8080
 dev-online:
 	PORT=$(PORT) docker compose up --build
 
-# ws gerektiren sunucu testleri (test/*.srv.mjs) konteynerde koşar.
+# ws gerektiren sunucu testleri (test/*.srv.mjs) konteynerde koşar. Proje adı COMPOSE_PROJECT_NAME env'den gelir (paralel koşular çakışmasın).
 test-srv:
 	docker compose run --rm server npm test --prefix server
