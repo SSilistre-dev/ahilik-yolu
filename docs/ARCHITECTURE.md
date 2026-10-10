@@ -219,13 +219,14 @@ Sunucu otoriterdir. İstemci hiçbir zaman tam state görmez.
 | `decks.yol`, `decks.ahlak`, `decks.ticaret` | aynı uzunlukta `null` dizisi (sıra gizli) |
 | `decks.yolDiscard`, `decks.ahlakDiscard` | açık (masada görünür) |
 | `players[i].task` | açık (ticaret kartı kurulumda açık dağıtılır) |
-| `pending.trade.give` | yalnız `from` ve `to` için açık, diğerlerine `null` |
+| `pending.give` (`pending.kind === 'trade'`) | yalnız `from` ve `to` için açık, diğerlerine `null` |
 | `pending.road.offers[].cards` | açık (masaya konan kartlar) |
 
 `seat = null` view'ı izleyici view'ıdır: hiçbir el görünmez.
 
 `eventsFor(events, seat)` şunları yapar:
 - `swap` event'indeki `give`/`want` kart id'leri yalnız iki tarafa açıktır, diğerlerine `null` gider.
+- `tradeOffer` event'indeki `give` kart id'si yalnız `from` ve `to` için açıktır, diğerlerine `null` gider (`want` bir ilke türüdür, kart id'si değil, açık kalır).
 - `refill` yalnız sayı taşır (zaten öyle).
 - `task` event'indeki yeni görev kartı açıktır.
 
