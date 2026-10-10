@@ -1,6 +1,6 @@
 # Ahilik Yolu — Sistem Mimarisi (v5: çevrimiçi + menü + bot seviyeleri)
 
-Durum: **taslak, onay bekliyor (AHI issue: "Mimari onayı")**. Tarih: 2026-10-10.
+Durum: **onaylandı (2026-10-10)**. Sunucu: Dokploy üzerinde tek Node konteyneri. Kurallar: kural kitabına göre. Mobil: Capacitor.
 Bu belge `SPEC.md` ile birlikte okunur. Kural davranışı SPEC'tedir; burası sistemin parçalarını, aralarındaki sözleşmeleri ve dağıtımı anlatır.
 
 ## 1. Hedefler ve sınırlar
@@ -21,37 +21,39 @@ Bu belge `SPEC.md` ile birlikte okunur. Kural davranışı SPEC'tedir; burası s
 
 **Sınırlar (bilinçli olarak yapılmayanlar, YAGNI)**
 - Hesap/giriş, arkadaş listesi, eşleştirme (matchmaking), sıralama tablosu, izleyici modu, sohbet, çoklu dil.
-- Veritabanı. Oda durumu Durable Object storage'da yaşar ve oda kapanınca silinir.
-- Bundler ve npm runtime bağımlılığı. İstemci build'siz kalır. Sunucuyu `wrangler` paketler; wrangler yalnız geliştirme aracıdır ve `npx` ile sabit sürümle çalışır.
+- Veritabanı. Oda durumu sunucu belleğinde yaşar, her değişiklikten sonra diske (`/data/rooms/<kod>.json`) anlık görüntü yazılır, oda kapanınca silinir.
+- Yatay ölçekleme. Tek konteyner, tek süreç (`ponytail:` tek instance; çok instance gerekirse oda koduna göre yapışkan yönlendirme eklenir).
+- Bundler. İstemci build'siz kalır. Sunucunun tek npm bağımlılığı `ws`'dir (WebSocket sunucusu); yalnız `server/package.json` içinde, Docker imajında kurulur.
 
 ## 2. Sistem bağlamı
 
 ```mermaid
 flowchart LR
-  subgraph Cihaz["Oyuncu cihazı (telefon / masaüstü)"]
-    PWA["PWA istemcisi<br/>index.html + src/*.js<br/>three.js (CDN)"]
-    LS[("localStorage<br/>profil · kayıt · oda token")]
-    SWC[("Service Worker<br/>önbellek")]
+  subgraph Cihaz["Oyuncu cihazı"]
+    PWA["Web istemcisi (PWA)<br/>index.html + src/*.js"]
+    APP["iOS / Android uygulaması<br/>Capacitor kabuğu + gömülü web varlıkları"]
+    LS[("localStorage<br/>profil · ayarlar · kayıt · oda token")]
   end
-  subgraph CF["Cloudflare (ahilik.ssilistre.dev)"]
-    W["Worker<br/>server/worker.js<br/>statik varlık + /api + /ws"]
-    DO["Durable Object: Room<br/>(oda kodu başına 1)<br/>server/room-do.js"]
-    ST[("DO Storage<br/>oda anlık görüntüsü")]
-    RL["Rate Limiting binding"]
+  subgraph Dokploy["Dokploy (self-hosted) · ahilik.ssilistre.dev"]
+    TR["Traefik<br/>TLS · yönlendirme"]
+    NODE["Node 22 konteyneri<br/>server/index.js<br/>statik varlık + /api + /ws"]
+    VOL[("Kalıcı birim /data<br/>oda anlık görüntüleri")]
   end
-  JSD["cdn.jsdelivr.net<br/>three@0.160.0"]
-  GH["GitHub<br/>repo + Actions CI"]
+  JSD["cdn.jsdelivr.net<br/>three@0.160.0 (yalnız web)"]
+  GH["GitHub<br/>repo · Actions CI"]
+  DNS["Cloudflare DNS<br/>ssilistre.dev"]
 
-  PWA -- "HTTPS GET varlıklar" --> W
-  PWA -- "POST /api/rooms<br/>GET /api/rooms/:kod" --> W
-  PWA <-- "WebSocket /ws/:kod<br/>JSON protokol v1" --> W
-  W -- "idFromName(kod)" --> DO
-  DO --- ST
-  W --- RL
-  PWA -- "import" --> JSD
+  PWA -- "HTTPS varlıklar" --> TR
+  PWA <-- "WSS /ws/:kod" --> TR
+  APP <-- "WSS /ws/:kod" --> TR
+  APP -- "POST /api/rooms" --> TR
+  TR --> NODE
+  NODE --- VOL
+  PWA -- import --> JSD
   PWA --- LS
-  PWA --- SWC
-  GH -- "wrangler deploy (main)" --> W
+  APP --- LS
+  GH -- "main push → Dokploy webhook → docker build" --> NODE
+  DNS -. "A/CNAME" .-> TR
 ```
 
 ## 3. Modül haritası
@@ -70,6 +72,7 @@ flowchart TB
     sess["src/session.js (YENİ)<br/>LocalSession · OnlineSession"]
     net["src/net.js (YENİ)<br/>WebSocket istemcisi"]
     menu["src/menu.js (YENİ)<br/>ana menü · kurulum · lobi · ayarlar"]
+    router["src/router.js (YENİ)<br/>ekran durum makinesi + history"]
     ui["src/ui.js<br/>oyun içi HUD"]
     scene["src/scene.js<br/>three.js tahta"]
     tut["src/tutorial.js"]
@@ -77,8 +80,8 @@ flowchart TB
     store["src/store.js (YENİ)<br/>localStorage sarmalayıcı"]
   end
   subgraph Sunucu["Sunucu (server/)"]
-    worker["server/worker.js<br/>HTTP yönlendirme"]
-    roomdo["server/room-do.js<br/>DO adaptörü: WS, storage, alarm"]
+    index["server/index.js<br/>HTTP: statik + /api, WS upgrade"]
+    hub["server/hub.js<br/>oda haritası, soket bağlama,<br/>zamanlayıcı, disk anlık görüntüsü"]
     room["server/room.js<br/>saf Room mantığı (test edilir)"]
   end
 
@@ -98,16 +101,16 @@ flowchart TB
   ui --> data
   menu --> store
   sess --> store
-  worker --> roomdo
-  roomdo --> room
+  index --> hub
+  hub --> room
   room --> game
   room --> view
   room --> bot
 ```
 
 Kurallar:
-- `server/room.js` saftır. Saat (`now`) ve rastgelelik (`rand`) parametre olarak gelir. `node:test` ile tarayıcısız ve wrangler'sız test edilir.
-- `server/room-do.js` ince bir adaptördür: WebSocket, storage ve alarm. İçinde oyun mantığı olmaz.
+- `server/room.js` saftır. Saat (`now`) ve rastgelelik (`rand`) parametre olarak gelir. `node:test` ile tarayıcısız ve ağsız test edilir.
+- `server/hub.js` ince bir adaptördür: soket, zamanlayıcı ve disk. İçinde oyun mantığı olmaz. `server/index.js` yalnız HTTP yönlendirmesi yapar.
 - İstemcide `main.js` motoru doğrudan çağırmaz, yalnız `Session` arayüzünü bilir. İki uygulama vardır (Local, Online); bu yüzden arayüz gerekçelidir.
 
 ## 4. Session arayüzü (istemci)
@@ -147,6 +150,7 @@ Her mesaj `{ v:1, t:<tip>, ... }` biçimindedir. En büyük mesaj 8 KB'tır. San
 | `act` | `action`, `base:version` | actor | Oyun aksiyonu. `base` eskiyse reddedilir. |
 | `emote` | `id` (hazır listeden) | oyuncu | Hazır tepki; serbest metin yok. |
 | `rematch` | – | oyuncu | Oyun bitince tekrar oynama oyu. |
+| `leave` | – | herkes | Odadan bilerek çıkış; lobide koltuk boşalır, oyunda koltuğu bot devralır. |
 | `ping` | – | herkes | 25 sn'de bir. |
 
 **Sunucu → istemci**
@@ -165,10 +169,10 @@ sequenceDiagram
   autonumber
   actor A as Ayşe (host)
   actor B as Burak
-  participant W as Worker
-  participant R as Room DO
+  participant W as server/index.js
+  participant R as hub + Room(K7M2QX)
   A->>W: POST /api/rooms
-  W->>R: idFromName(K7M2QX).init(host)
+  W->>R: hub.create() → kod
   W-->>A: {code:"K7M2QX"}
   A->>R: WS /ws/K7M2QX · hello{name}
   R-->>A: welcome{seat:0, token} · lobby
@@ -186,7 +190,7 @@ sequenceDiagram
   R->>R: apply · version=2 · persist
   R-->>A: game{v2}
   R-->>B: game{v2}
-  Note over R: Botun sırası: alarm(+700 ms) → botAction(viewFor(bot)) → apply
+  Note over R: Botun sırası: setTimeout(+700 ms) → room.tick(now) → botAction(viewFor(bot)) → apply
 ```
 
 ## 6. Gizli bilgi: `viewFor` ve `eventsFor` (`src/view.js`)
@@ -231,7 +235,7 @@ stateDiagram-v2
   game --> [*]: 24 sa hiç bağlantı yok
 ```
 
-**Zamanlayıcılar.** DO'da tek alarm vardır, en yakın son tarihe kurulur. Saf `room.tick(now)` vadesi gelen işleri döner:
+**Zamanlayıcılar.** Oda başına tek `setTimeout` vardır, en yakın son tarihe kurulur (`hub`). Saf `room.tick(now)` vadesi gelen işleri döner:
 
 | Olay | Süre | Ne olur |
 |---|---|---|
@@ -239,17 +243,17 @@ stateDiagram-v2
 | Tur süresi (`turnSeconds>0`) | 30/60/120 sn | Süre dolunca o oyuncu için **Orta** bot bir aksiyon oynar. Log satırı: "süre doldu, otomatik oynandı". |
 | Cevap süresi (takas/yol katkısı) | 20 sn | Otomatik ret ya da `contribute []`. |
 | Kopan bağlantı | 30 sn tolerans | Koltuk "bot devraldı" olur. Oyuncu dönünce koltuğu geri alır. |
-| Boşta oda | 24 sa | Storage silinir. |
+| Boşta oda | 24 sa | Bellekten ve diskten silinir. |
 
-**Kalıcılık.** Her başarılı mutasyondan sonra `storage.put('room', snapshot)` çalışır. Snapshot `{lobby, state, version, log(son 200), deadlines}` içerir. DO uyanınca snapshot'tan kurulur (WebSocket Hibernation API).
+**Kalıcılık.** Her başarılı mutasyondan sonra `/data/rooms/<kod>.json` atomik olarak yazılır (geçici dosya + `rename`). Snapshot `{lobby, state, version, log(son 200), deadlines}` içerir. Konteyner yeniden başlarsa açılışta diskteki odalar yüklenir; istemciler token ile aynı koltuğa döner. Yeniden dağıtım (deploy) en çok birkaç saniyelik kopma yaratır.
 
-**Eşzamanlılık.** DO tek iş parçacıklıdır. `act.base !== version` ise `error{stale}` döner ve istemci son `game` mesajıyla yeniden senkronlanır.
+**Eşzamanlılık.** Node tek iş parçacıklıdır ve oda mesajları sırayla işlenir. `act.base !== version` ise `error{stale}` döner ve istemci son `game` mesajıyla yeniden senkronlanır.
 
 ## 8. Davet kodu
 
 - Alfabe: `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 karakter; 0, O, 1, I, L yok). Uzunluk 6, yani yaklaşık 887 milyon kombinasyon.
-- Kodu `POST /api/rooms` üretir. DO `init` çağrısında oda zaten varsa yeni kod denenir (en çok 5 deneme).
-- Rate limit: IP başına dakikada 10 oda.
+- Kodu `POST /api/rooms` üretir. Oda haritasında varsa yeni kod denenir (en çok 5 deneme).
+- Rate limit: IP başına dakikada 10 oda (bellek içi token bucket; IP, Traefik'in `X-Forwarded-For` başlığından okunur).
 - Paylaşım: Web Share API ve panoya kopyalama. Link: `https://ahilik.ssilistre.dev/?oda=K7M2QX`. Link açılınca katılma ekranı kodu otomatik doldurur.
 - Koda katılmak için kod yeterlidir; şifre yoktur. Kod bilinmeden odaya girilemez. Oyun başladıktan sonra yeni insan katılamaz; yalnız token sahibi geri dönebilir.
 
@@ -290,7 +294,7 @@ flowchart TD
   Pause --> Game
   Pause -->|onaylı| Menu
   Game --> End["OYUN SONU<br/>kürsü · çarpan açıklaması · istatistik<br/>Tekrar Oyna · Ana Menü"]
-  End -->|online: rematch| Lobby
+  End -->|online: rematch oylaması| Game
   End --> Menu
 ```
 
@@ -301,33 +305,33 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  Dev["dal + PR"] --> CI["GitHub Actions<br/>node --test · sürüm testi"]
-  CI -->|main'e merge| Deploy["npx wrangler@&lt;sabit&gt; deploy"]
-  Deploy --> Prod["Worker: ahilik.ssilistre.dev<br/>assets + /api + /ws + DO"]
+  Dev["dal + PR"] --> CI["GitHub Actions<br/>node --test · docker build"]
+  CI -->|main'e merge| Hook["Dokploy webhook"]
+  Hook --> Build["docker build (Dockerfile)"]
+  Build --> Prod["Uygulama: ahilik.ssilistre.dev<br/>Traefik TLS · /data birimi"]
   Prod --> Smoke["Dağıtım sonrası smoke testi<br/>GET / 200 · /api/health 200 · WS hello"]
-  Pages["GitHub Pages (eski)"] -.->|"cutover sonrası yönlendirme"| Prod
+  Pages["GitHub Pages (eski)"] -.->|"geçiş sonrası yönlendirme"| Prod
 ```
 
-- `wrangler.jsonc`:
-  - `assets.directory = "."`. `.assetsignore` şunları dışarıda bırakır: `server/`, `test/`, `docs/`, `.wt/`, `assets-src/`, `*.pdf`, `dev/`.
-  - `durable_objects` → `Room` (SQLite storage), `migrations`, `observability.enabled = true`.
-  - `ratelimits` binding.
-- Gizli bilgi: GitHub Actions secret `CLOUDFLARE_API_TOKEN` (Workers deploy kapsamı). Repoya yazılmaz.
-- Yerel geliştirme: `make dev-online` → `npx wrangler@<sabit> dev` (port boşsa 8787). Tek oyunculu mod yine `python3 -m http.server` ile çalışır.
-- Service worker yalnız GET varlıklarını önbelleğe alır. `/api/*` ve `/ws/*` istekleri SW'yi atlar.
+- **İmaj:** kökte `Dockerfile` (node:22-alpine). `server/package.json` içindeki `ws` kurulur (`npm ci --omit=dev`). Web varlıkları imaja kopyalanır; `.dockerignore` `test/`, `docs/`, `.wt/`, `assets-src/`, `*.pdf`, `dev/` dizinlerini dışarıda bırakır.
+- **Statik sunum:** `server/index.js` yalnız beyaz listedeki yolları sunar (`index.html`, `style.css`, `sw.js`, `manifest.webmanifest`, `src/`, `assets/`). Dizin gezintisi ve `..` reddedilir. `?v=` sorgusu yok sayılır, `Cache-Control` ayarlanır.
+- **Dokploy:** "Application" türü, GitHub kaynağı, `main` dalı, Dockerfile build, otomatik deploy. Kalıcı birim `/data`. Alan adı `ahilik.ssilistre.dev` (Let's Encrypt). Panel ve API anahtarı bilgisi yalnız yerel geliştirici notlarındadır, repoya ve issue'lara yazılmaz.
+- **DNS:** Cloudflare `ssilistre.dev` bölgesinde `ahilik` kaydı Dokploy sunucusuna gider (proxy kapalı ya da WebSocket destekli açık).
+- **Yerel geliştirme:** `docker compose up` → `http://localhost:8080` (port doluysa başka port seçilir). Saf modül testleri host'ta `node --test` ile koşar (bağımlılık yok). `ws` gerektiren sunucu testleri konteynerde koşar: `docker compose run --rm server npm test`.
+- **Service worker:** yalnız GET varlıklarını önbelleğe alır. `/api/*` ve `/ws/*` istekleri SW'yi atlar.
 
 ## 12. Güvenlik ve gizlilik
 
 | Tehdit | Önlem |
 |---|---|
-| Başkasının koltuğundan aksiyon | Koltuk WS bağlantısına bağlıdır (`serializeAttachment`). `act` yalnız `actor(state)===seat` ise işlenir. |
+| Başkasının koltuğundan aksiyon | Koltuk WS bağlantısına bağlıdır (soket nesnesinde tutulur). `act` yalnız `actor(state)===seat` ise işlenir. |
 | Token çalınması | Token 128 bit rastgele (`crypto.randomUUID`), yalnız o odada ve yalnız oda yaşadıkça geçerli. HTTPS/WSS zorunlu. |
 | Gizli el veya deste sızıntısı | `viewFor`/`eventsFor` + fuzz testi (§6). Seed istemciye gitmez. |
 | Geçersiz aksiyon | Motor `apply` doğrular ve fırlatır, sunucu yakalar → `error{illegal}`. State değişmez. |
 | Kaba isim | 1–16 karakter, NFC, kontrol karakteri yok, küçük yasaklı kelime listesi (TR). İsim her yerde `textContent` ya da `esc` ile basılır. |
-| DoS | Mesaj boyutu ≤ 8 KB, mesaj sıklığı ≤ 20/sn, IP başına oda oluşturma limiti, oda başına ≤ 6 bağlantı. |
-| Origin | WS upgrade'de `Origin` beyaz listesi: prod domain ve localhost. |
-| Kişisel veri | Toplanmaz. Ad yalnız oda ömrü boyunca DO'da durur. Gizlilik notu "Ayarlar → Hakkında" altında. |
+| DoS | `ws` `maxPayload` 8 KB, mesaj sıklığı ≤ 20/sn, IP başına oda oluşturma limiti, oda başına ≤ 6 bağlantı, toplam oda üst sınırı (varsayılan 500). |
+| Origin | WS upgrade'de `Origin` beyaz listesi: prod domain, localhost ve Capacitor origin'leri (`capacitor://localhost`, `https://localhost`). |
+| Kişisel veri | Toplanmaz. Ad yalnız oda ömrü boyunca sunucuda durur. Gizlilik notu "Ayarlar → Hakkında" altında. |
 
 ## 13. Test stratejisi
 
@@ -336,6 +340,20 @@ flowchart LR
 | Motor, view, bot, room | `node:test` (`test/*.test.js`) | `make olc` |
 | Sürüm senkronu, fixture şeması | `node:test` | `make olc` |
 | Bot seviyeleri ve denge | `make sim` (`test/sim.mjs`) | PR'a tablo eklenir, kapıda değil |
-| Sunucu protokolü | `test/online.smoke.mjs`: `wrangler dev` + Node global `WebSocket`, 2 insan + 2 bot tam oyun | `make qa` |
+| Sunucu protokolü | `test/online.smoke.mjs`: `docker compose up` + Node global `WebSocket`, 2 insan + 2 bot tam oyun | `make qa` |
 | UI | Playwright tek dosya, host Brave (`E2E_BROWSER_PATH`). Tek oyunculu tam tur + 2 sekmeli çevrimiçi lobi | `make qa` |
 | Prod | Dağıtım sonrası smoke testi | CI |
+
+## 14. Mobil (iOS / Android)
+
+- **Kabuk:** Capacitor, `mobile/` klasöründe ayrı `package.json` ile (web oyunu build'siz kalır).
+- **Uygulama paketi:** web varlıkları `mobile/www/` dizinine bir betikle kopyalanır. three.js CDN yerine uygulama içine gömülü (`vendor/three@0.160.0/`) importmap'le yüklenir; tek oyunculu mod uçak modunda çalışır.
+- **Çevrimiçi mod:** `wss://ahilik.ssilistre.dev` adresine bağlanır. Sunucu Capacitor origin'lerini kabul eder.
+- **Native:**
+  - Haptik (`@capacitor/haptics`).
+  - Android geri tuşu (`@capacitor/app` → yönlendirici).
+  - Durum çubuğu ve safe-area.
+  - Davet derin linki: `https://ahilik.ssilistre.dev/?oda=KOD`, iOS Universal Links ve Android App Links ile uygulamayı açar. Domain'de `/.well-known/apple-app-site-association` ve `/.well-known/assetlinks.json` sunulur.
+- **Kimlik:** bundle id `dev.ssilistre.ahilikyolu`. Mağaza adı "Ahilik Yolu". Geliştirici ssilistre.dev.
+- **Mağaza:** yaş sınırı 4+, veri toplanmaz (gizlilik etiketi "Data Not Collected"), gizlilik politikası URL'si `https://ahilik.ssilistre.dev/gizlilik`.
+- **Sıra:** telefon işleri en son sprinttedir (S10).
