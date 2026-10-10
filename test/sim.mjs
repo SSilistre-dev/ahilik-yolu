@@ -18,7 +18,7 @@ export function parseLineup(levels, players) {
 
 const REASONS = [['ahlak destesi bitti', 'ahlak'], ['ticaret destesi bitti', 'ticaret'], ['ödül havuzları boşaldı', 'ödül']];
 
-export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 1 } = {}) {
+export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 1, long = false } = {}) {
   if (!(players >= 2 && players <= 6)) throw new Error('--players 2-6 olmalı');
   const lineup = parseLineup(levels, players);
   const P = players, unit = P * P, n = Math.ceil(games / unit) * unit; // koltuk x başlangıç dengesi için P^2 katı
@@ -30,7 +30,7 @@ export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 
   for (let g = 0; g < n; g++) {
     const lv = Array.from({ length: P }, (_, i) => lineup[(i + g) % P]); // seviyeler koltuklarda döner
     const startIdx = Math.floor(g / P) % P;                              // başlayan koltuk bağımsız döner
-    let s = newGame({ players: lv.map((_, i) => ({ name: `B${i}`, bot: true })), seed: seed + g, startIdx });
+    let s = newGame({ players: lv.map((_, i) => ({ name: `B${i}`, bot: true })), seed: seed + g, startIdx, long });
     const rel = (i) => (i - startIdx + P) % P;
     while (s.phase !== 'over') {
       const a = decide(s, lv[actor(s)]);
@@ -54,7 +54,7 @@ export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 
   }
   const pct = (x) => +(100 * x / n).toFixed(1);
   return {
-    games: n, players: P, seed, lineup,
+    games: n, players: P, seed, lineup, long,
     levels: Object.fromEntries(names.map((k) => { const b = by[k], p = b.win / n;
       return [k, { seats: b.seats, fair: +(100 * b.seats / P).toFixed(1), win: pct(b.win), ci95: +(196 * Math.sqrt(p * (1 - p) / n)).toFixed(1),
         avgTotal: +(b.total / b.rows).toFixed(1), avgMoney: +(b.money / b.rows).toFixed(2), avgBadges: +(b.badges / b.rows).toFixed(2), avgTrades: +(b.trades / b.rows).toFixed(2) }]; })),
@@ -66,7 +66,7 @@ export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 
 }
 
 export function format(r) {
-  const L = [`Ahilik Yolu sim: ${r.players} oyuncu, ${r.games} oyun, seed ${r.seed}, dizilim ${r.lineup.join(',')} (seviyeler koltukta döner)`, ''];
+  const L = [`Ahilik Yolu sim: ${r.players} oyuncu, ${r.games} oyun, seed ${r.seed}, dizilim ${r.lineup.join(',')}${r.long ? ', UZUN OYUN' : ''} (seviyeler koltukta döner)`, ''];
   L.push('seviye   kazanma%  ±95GA  adil%  ort.puan  ort.para  ort.rozet  ort.ticaret');
   for (const [k, v] of Object.entries(r.levels)) L.push(`${k.padEnd(8)} ${String(v.win).padStart(8)} ${String(v.ci95).padStart(6)} ${String(v.fair).padStart(6)} ${String(v.avgTotal).padStart(9)} ${String(v.avgMoney).padStart(9)} ${String(v.avgBadges).padStart(10)} ${String(v.avgTrades).padStart(12)}`);
   L.push('', 'başlayandan sıra: kazanma% | ahlak çekimi | ödenen rozet | para | rozet');
@@ -78,10 +78,10 @@ export function format(r) {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const { values: v } = parseArgs({ options: { games: { type: 'string', default: '2000' }, players: { type: 'string', default: '4' }, levels: { type: 'string', default: 'medium' }, seed: { type: 'string', default: '1' }, json: { type: 'boolean', default: false } } });
+  const { values: v } = parseArgs({ options: { games: { type: 'string', default: '2000' }, players: { type: 'string', default: '4' }, levels: { type: 'string', default: 'medium' }, seed: { type: 'string', default: '1' }, json: { type: 'boolean', default: false }, long: { type: 'boolean', default: false } } });
   try {
     const t0 = Date.now();
-    const r = runSim({ games: +v.games, players: +v.players, levels: v.levels.split(','), seed: +v.seed });
+    const r = runSim({ games: +v.games, players: +v.players, levels: v.levels.split(','), seed: +v.seed, long: v.long });
     console.log(v.json ? JSON.stringify(r, null, 1) : format(r));
     console.error(`süre: ${((Date.now() - t0) / 1000).toFixed(1)} sn`);
   } catch (e) { console.error(`sim: ${e.message}`); process.exit(2); }

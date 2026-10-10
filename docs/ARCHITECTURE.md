@@ -276,13 +276,45 @@ stateDiagram-v2
 
 ## 9. Bot seviyeleri
 
-İmza: `botAction(view, legal, level)`. Saf ve deterministiktir; rastgelelik yalnız `view.gameId`, `view.turn`, `view.movesThisTurn`, `view.offersThisTurn`, `view.roadTries` ve `legal.length` değerlerinden türetilir; aynı view aynı kararı verir.
+İmza: `botAction(view, legal, level)`. Saf ve deterministiktir; rastgelelik (yalnız Kolay) yalnız view alanlarından türetilir (`gameId`, `turn`, `phase`, `movesThisTurn`, `offersThisTurn`, `roadTries`, `pending.kind`, `declined.length`, kendi eli; motor durumunda `version` yoktur); aynı view aynı kararı verir. Bilinmeyen seviye hata verir.
 
 | Seviye | Davranış | Hedef (sim, 4p, koltuk döndürmeli, 2000 oyun) |
 |---|---|---|
 | Kolay | %60 ilerleyen hamle, kalanı rastgele yasal hamle. Takas teklif etmez, yol açmaz. Gelen takası %50 kabul eder. Yazıyı %70 okur. | Orta'ya karşı kazanma ≤ %20 |
 | Orta | Bugünkü bot v4 (BFS + basit takas/yol) | Referans |
 | Zor | Rozet ekonomisi (çarpan eşikleri), liderin yolunu kapatma, kargo zamanlaması, yol açma değeri, bir adımlık ileri bakış | Orta'ya karşı kazanma ≥ %40 (4 oyuncuda adil pay %25) |
+
+### Ölçüm sonuçları (AHI-021/022/023/027/028; `make sim`, tohum 1, koltuk ve başlayan bağımsız döner, 3008 oyun, ±%1,8)
+
+| Dizilim (4 oyuncu) | Sonuç | Hedef |
+|---|---|---|
+| 1 Kolay + 3 Orta | Kolay %4,0 (adil %25) | ≤ %20: tamam |
+| 1 Zor + 3 Orta | Zor %46,6 | ≥ %40: tamam |
+| 1 Orta + 3 Kolay | Orta %59,3 | bilgi |
+| 1 Orta + 3 Zor | Orta %12,0 | bilgi |
+
+Zor payı aşamalı (2000-3008 oyun): Zor çekirdeği + kargo zamanlaması %34,1 (±2,1); rozet çarpan eşikleri (AHI-022) ile %47,6; liderin yolunu kapatma (AHI-023) ile %46,6 (fark ±1,8 gürültü içinde, kazanç beklenmez, amaç savunma yönünde bilinçli davranış). Orta×4 sim çıktısı bot seviyeleri öncesiyle birebir aynıdır.
+
+Tek tür dizilim, başlayandan sıra kazanma payı % (Orta: 4p 12000 oyun, diğerleri 3000; Zor: 3000 civarı):
+
+| Oyuncu | Orta | Zor |
+|---|---|---|
+| 2 | 48,6 / 51,4 | 49,0 / 51,0 |
+| 3 | 33,6 / 32,1 / 34,4 | 33,0 / 34,2 / 32,8 |
+| 4 | 23,4 / 26,0 / 25,9 / 24,7 | 23,6 / 26,6 / 25,0 / 24,8 |
+| 5 | 19,0 / 20,8 / 19,8 / 20,5 / 19,9 | 20,1 / 21,1 / 20,2 / 20,0 / 18,6 |
+| 6 | 16,7 / 14,7 / 17,9 / 17,5 / 17,4 / 15,8 | 16,5 / 15,9 / 17,7 / 16,0 / 17,3 / 16,7 |
+
+Uzun oyun (AHI-028, hepsi Orta, 4p 2000, 5p 3000, 6p 3024 oyun):
+
+| Oyuncu | Mod | Ort. tur | Tur/kişi | Para/kişi | Ahlak kartsız tur | Ana bitiş nedeni |
+|---|---|---|---|---|---|---|
+| 4 | normal | 23,8 | 6,0 | 8,10 | 2,87 | ahlak %95,8 |
+| 4 | uzun | 29,4 | 7,3 | 9,85 | 0,05 | ticaret %94,5 |
+| 5 | normal | 24,7 | 4,9 | 6,67 | 3,74 | ahlak %93,4 |
+| 5 | uzun | 28,6 | 5,7 | 7,68 | 0,04 | ticaret %95,5 |
+| 6 | normal | 23,8 | 4,0 | 5,38 | 2,88 | ahlak %88,3 |
+| 6 | uzun | 27,9 | 4,6 | 6,26 | 0,02 | ticaret %97,0 |
 
 Bekleme süresi seviyeden bağımsızdır (700 ms). Hızı ayarlardan oyuncu seçer.
 
