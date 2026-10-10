@@ -17,6 +17,7 @@ const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
 let botTimer = 0;
+let botLevels = []; // koltuk -> 'easy'|'medium'|'hard'
 let lastBotAct = 0;
 let undoStack = [];
 let sceneReady = false;
@@ -61,6 +62,7 @@ async function start(opts) {
   highlight = [];
   botFails = 0;
   state = newGame({ ...opts, seed: (Math.random() * 2 ** 32) >>> 0 });
+  botLevels = (opts.players ?? []).map((p) => p.level ?? 'medium');
   update([]);
 }
 
@@ -114,7 +116,7 @@ function effects(events) {
   if (coin) sfx.play('coin');
 }
 
-const botNext = () => act(safeBotAction(state), true);
+const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
 
 function update(events) {
   clearTimeout(botTimer);

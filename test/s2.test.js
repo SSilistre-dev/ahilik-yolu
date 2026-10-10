@@ -4,6 +4,9 @@ import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
 import { newGame, legalActions, apply, actor } from '../src/game.js';
 import { botAction } from '../src/bot.js';
+import { viewFor } from '../src/view.js';
+
+const decide = (s) => botAction(viewFor(s, actor(s), 't'), legalActions(s));
 
 const P2 = [{ name: 'A', bot: false }, { name: 'B', bot: true }];
 const P3 = [...P2, { name: 'C', bot: true }];
@@ -97,7 +100,7 @@ test('bot: komşu karede enterCity çağırır', () => {
   const s = moveState({ pos: 17, hand: ['yol-durust-1', 'yol-comert-1'] });
   s.players[0].bot = true;
   const near = step(s, { type: 'move', card: 'yol-durust-1', tile: 18 });
-  assert.deepEqual(botAction(near), { type: 'enterCity' });
+  assert.deepEqual(decide(near), { type: 'enterCity' });
 });
 
 // ---- AHI-007 ----
@@ -188,7 +191,7 @@ test('bot: yol katkısı varsayılan varyantı seçer', () => {
   const s = closeComert(moveState({ hand: ['yol-comert-1', 'yol-comert-2'] }));
   s.players[1].hand = ['yol-comert-3', 'yol-comert-4', 'yol-ahievran-0', 'yol-durust-1', 'yol-durust-2', 'yol-durust-3'];
   const r = step(s, { type: 'openRoad', tile: 16, cards: ['yol-comert-1', 'yol-comert-2'] });
-  const a = botAction(r);
+  const a = decide(r);
   assert.ok(isLegal(r, a));
   assert.deepEqual(a.cards, ['yol-comert-3', 'yol-comert-4']);
 });

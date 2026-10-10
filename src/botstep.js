@@ -1,5 +1,6 @@
-import { legalActions } from './game.js';
+import { legalActions, actor } from './game.js';
 import { botAction } from './bot.js';
+import { viewFor } from './view.js';
 
 // Her fazda ilerleme sağlayan yasal aksiyon; legal boşsa null.
 export function fallbackAction(legal) {
@@ -10,10 +11,10 @@ export function fallbackAction(legal) {
 }
 
 // Bot fırlatırsa ya da yasadışı aksiyon dönerse yedeğe düşer.
-export function safeBotAction(s, pick = botAction) {
+export function safeBotAction(s, level = 'medium', gameId = 'local', pick = botAction) {
   const legal = legalActions(s);
   let a;
-  try { a = pick(s); } catch (e) { console.error('bot', e); }
+  try { a = pick(viewFor(s, actor(s), gameId), legal, level); } catch (e) { console.error('bot', e); }
   const key = a === undefined ? '' : JSON.stringify(a);
   return key && legal.some((l) => JSON.stringify(l) === key) ? a : fallbackAction(legal);
 }

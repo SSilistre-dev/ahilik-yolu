@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
 import { newGame, legalActions, apply, score, actor, WANT_KINDS } from '../src/game.js';
 import { botAction } from '../src/bot.js';
+import { viewFor } from '../src/view.js';
+
+const decide = (s) => botAction(viewFor(s, actor(s), 't'), legalActions(s));
 import { CARDS, HAND_SIZE, PLAYER_COLORS } from '../src/data.js';
 
 const P2 = [{ name: 'A', bot: false }, { name: 'B', bot: true }];
@@ -244,11 +247,11 @@ test('bot answers trade offers and road asks with a legal action', () => {
   const s = moveState({ hand: ['yol-comert-1'] });
   s.players[1].hand = ['yol-bilgili-1', 'yol-comert-2'];
   const o = apply(s, { type: 'offerTrade', withPlayer: 1, give: 'yol-comert-1', want: 'bilgili' }).state;
-  assert.ok(isLegal(o, botAction(o)));
+  assert.ok(isLegal(o, decide(o)));
   closeComert(s);
   s.players[0].hand = ['yol-comert-1', 'yol-comert-3'];
   const r = apply(s, { type: 'openRoad', tile: 16, cards: ['yol-comert-1', 'yol-comert-3'] }).state;
-  const c = botAction(r);
+  const c = decide(r);
   assert.equal(c.type, 'contribute');
   assert.ok(isLegal(r, c));
   assert.equal(CARDS[c.cards[0]]?.ilke ?? 'comert', 'comert');

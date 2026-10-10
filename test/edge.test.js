@@ -2,12 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
-import { newGame, legalActions, apply, score } from '../src/game.js';
+import { newGame, legalActions, apply, score, actor } from '../src/game.js';
 import { botAction } from '../src/bot.js';
+import { viewFor } from '../src/view.js';
 import { pathTo } from '../src/path.js';
 
 const P2 = [{ name: 'A', bot: true }, { name: 'B', bot: true }];
-const decide = (s) => botAction(s); // N04 sonrası: botAction(viewFor(s, actor(s), 't'), legalActions(s))
+const decide = (s, level) => botAction(viewFor(s, actor(s), 't'), legalActions(s), level);
 const isLegal = (s, a) => legalActions(s).some((l) => isDeepStrictEqual(l, a));
 const place = (s, pi, tile) => {
   const o = s.tiles[s.players[pi].pos].occupants; o.splice(o.indexOf(pi), 1);

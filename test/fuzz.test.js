@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isDeepStrictEqual } from 'node:util';
-import { newGame, legalActions, apply, score } from '../src/game.js';
+import { newGame, legalActions, apply, score, actor } from '../src/game.js';
 import { botAction } from '../src/bot.js';
+import { viewFor } from '../src/view.js';
 
 // Card conservation: yol 57, ticaret 28, ahlak 21 at every step.
 function check(s, where) {
@@ -26,7 +27,7 @@ test('fuzz: 200 seeded all-bot games (2-6 players) finish, only legal actions, c
     let steps = 0;
     check(s, `seed ${seed} start`);
     while (s.phase !== 'over' && steps++ < 3000) {
-      const a = botAction(s);
+      const a = botAction(viewFor(s, actor(s), 't'), legalActions(s));
       assert.ok(legalActions(s).some((l) => isDeepStrictEqual(l, a)), `seed ${seed} step ${steps}: illegal ${JSON.stringify(a)}`);
       s = apply(s, a).state;
       check(s, `seed ${seed} step ${steps}`);
