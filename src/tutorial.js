@@ -218,7 +218,7 @@ export function createTutorial(root, { art, url }) {
         if (first && coach) openIntro();
       }
       for (const ev of events) {
-        if (ev.type === 'ahlak' && coach) {
+        if (ev.type === 'ahlak' && !ev.empty && coach) {
           quiet = Date.now() + 2400; setTimeout(refresh, 2450);
           if (st.phase === 'move') { resultUntil = quiet + 3200; setTimeout(refresh, 5700); }
         }

@@ -274,6 +274,7 @@ Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesi
   Karar sırası bir insandan başka bir insana geçince UI "Telefonu X'e ver" perdesi gösterir; perde kalkmadan el görünmez.
 - **Tur başında el tamamlama (kural 26):** sıra bir oyuncuya geçtiğinde, ahlak kartından önce eli 6'ya tamamlanır.
   `n>0` ise event `{type:'refill', pIdx, n}`. Tur sonunda da el 6'ya tamamlanır (3. hamle).
+- **Boş ahlak destesi:** deste boşken tur doğrudan `move` fazında başlar (`drawAhlak` yasal değil); `ahlak` event'i `{pIdx, empty:true, text}` taşır, kart yoktur. Event: `ahlak {pIdx,card,ilke,empty?}`.
 - **Piyon ilerletme zorunlu:** `endTurn` yalnız `movesThisTurn>0 || moveDone` iken yasaldır.
 - **Pas (Pas Geçme Hamlesi):** yalnız `phase==='move'`, `movesThisTurn===0`, `!moveDone` ve yasal hiçbir `move`/`kargo` yokken yasaldır.
   Elin tamamı ıskartaya gider, 6 yeni kart çekilir, sıra biter.

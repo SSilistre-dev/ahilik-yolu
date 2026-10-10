@@ -95,7 +95,7 @@ function effects(events) {
         const pt = scene.projectTile?.(ev.tile);
         if (pt) ui.flyCoins?.(pt, ev.pIdx, ev.n);
         coin = true;
-      } else if (SOUND[ev.type]) sfx.play(SOUND[ev.type]);
+      } else if (SOUND[ev.type] && !ev.empty) sfx.play(SOUND[ev.type]);
       if (state.players[ev.pIdx ?? state.active]?.bot) continue;
       if (ev.type === 'ahlak' && CARDS[ev.card]?.negative) buzz([40, 60, 40]);
       else if (BUZZ[ev.type]) buzz(BUZZ[ev.type]);
@@ -118,7 +118,7 @@ function update(events) {
   renderScene();
   effects(events);
   if (state.phase !== 'over' && who.bot) {
-    const d = events.some(e => e.type === 'ahlak') ? BOT_DELAY_AHLAK : BOT_DELAY;
+    const d = events.some(e => e.type === 'ahlak' && !e.empty) ? BOT_DELAY_AHLAK : BOT_DELAY;
     botTimer = setTimeout(botNext, d);
   }
 }
