@@ -8,16 +8,20 @@ import { createUI } from './ui.js';
 import { createSfx } from './sfx.js';
 
 import { goalTile, pathTo } from './path.js';
-import { CARDS } from './data.js';
+import { CARDS, ILKE_IDS } from './data.js';
 import { initPwa } from './pwa.js';
 import { createRouter } from './router.js';
+import { createBotClock } from './botclock.js';
+import { applyTokens, createMenu } from './menu.js';
+import { registerMainScreens, createPause } from './menu-main.js';
+import { store, KEYS } from './store.js';
 
 const BOT_DELAY = 700;
 const BOT_DELAY_AHLAK = 1200; // reveal animasyonu görünsün
 const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
 let state = null;
 let highlight = [];
-let botTimer = 0;
+const clock = createBotClock();
 let botLevels = []; // koltuk -> 'easy'|'medium'|'hard'
 let lastBotAct = 0;
 let undoStack = [];
@@ -45,6 +49,7 @@ const ui = createUI(document.getElementById('ui'), {
   onTileHighlight: idxs => { highlight = idxs; if (state) renderScene(); },
   // #stage CSS already excludes the desktop sidebar, so the scene must not subtract it again.
   onLayout: ins => scene.setInsets?.({ ...ins, right: 0 }),
+  onPause: () => { if (router.current?.name === 'game') router.go('pause'); },
 });
 const readyP = scene.ready ? Promise.resolve(scene.ready).catch(() => {}) : Promise.resolve();
 readyP.then(() => { sceneReady = true; });
@@ -57,13 +62,15 @@ function renderScene() {
 }
 
 async function start(opts) {
-  clearTimeout(botTimer);
+  clock.cancel(); clock.resume();
   started = true;
   if (!sceneReady) {
     ui.setLoading?.(prog);
     await readyP;
     ui.setLoading?.(1);
   }
+  // Kart görselleri önden yüklenir (ilk el açılırken boş görünmesin).
+  for (const f of [...ILKE_IDS.map(i => `yol-${i}`), 'yol-back', 'ahlak-back', 'ticaret-back']) new Image().src = `assets/cards/${f}.jpg`;
   undoStack = [];
   highlight = [];
   botFails = 0;
@@ -73,7 +80,8 @@ async function start(opts) {
 }
 
 function act(action, isBot) {
-  if (action.type === 'newGame') { clearTimeout(botTimer); sfx.play('click'); return router.go('menu', {}, { replace: true }); }
+  if (!state) return;
+  if (action.type === 'newGame') { sfx.play('click'); return toMenu(); }
   if (action.type === 'undo') {
     if (isBot || !undoStack.length) return;
     sfx.play('click'); buzz(10);
@@ -87,8 +95,7 @@ function act(action, isBot) {
     console.error(e);
     if (isBot) {
       if (++botFails >= 3) return window.__ahiFatal?.('Oyunda bir sorun oldu', 'Yeniden başlatmak ister misin?', e);
-      clearTimeout(botTimer);
-      botTimer = setTimeout(() => { const a = fallbackAction(legalActions(state)); if (a) act(a, true); }, 300);
+      clock.schedule(() => { const a = fallbackAction(legalActions(state)); if (a) act(a, true); }, 300);
     }
     return;
   }
@@ -125,8 +132,7 @@ function effects(events) {
 const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
 
 function update(events) {
-  clearTimeout(botTimer);
-  botTimer = 0;
+  clock.cancel();
   const legal = legalActions(state);
   const p = state.players[state.active], who = state.players[actor(state)];
   if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
@@ -136,39 +142,48 @@ function update(events) {
   effects(events);
   if (state.phase !== 'over' && who.bot) {
     const d = events.some(e => e.type === 'ahlak' && !e.empty) ? BOT_DELAY_AHLAK : BOT_DELAY;
-    botTimer = setTimeout(botNext, d);
+    clock.schedule(botNext, d);
   }
 }
 
 // Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
 addEventListener('pointerdown', () => {
-  if (!botTimer || !state || !state.players[actor(state)].bot) return;
-  clearTimeout(botTimer);
-  botTimer = setTimeout(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
+  if (!clock.pending || !state || !state.players[actor(state)].bot) return;
+  clock.schedule(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
 }, true);
 
 // Kart seçimi titreşimi.
 document.getElementById('ui').addEventListener('click', e => { if (e.target.closest('.ay-card')) buzz(10); });
 
-// Ses aç/kapa düğmesi (index.html'de #mute).
-const mute = document.getElementById('mute');
-if (mute) {
-  const paint = () => { mute.textContent = sfx.muted ? '🔇' : '🔊'; mute.setAttribute('aria-pressed', String(sfx.muted)); };
-  mute.addEventListener('click', () => { sfx.setMuted(!sfx.muted); paint(); if (!sfx.muted) sfx.play('click'); });
-  paint();
-  // Sit in the UI side column (under the log button) so it never covers player chips.
-  const side = document.querySelector(".ay-side");
-  if (side) { mute.className = "ay-round ay-p"; side.prepend(mute); }
-}
-
-// Ekran yönlendirici: şimdilik menu (başlangıç ekranı) ve game. Duraklat menüsü yok (AHI-064):
-// oyundayken geri tuşu pause'a gider, pause hemen geri döner; yani geri tuşu oyunda etkisizdir.
+// Ekran yönlendirici + menü ekranları (M03/M06/M09). Oyundayken geri tuşu/Escape Duraklat'ı açar, Duraklat'ta Devam eder.
+applyTokens();
+const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
-router.onChange(({ name }) => {
-  if (name === 'menu') { clearTimeout(botTimer); ui.showStart(opts => { start(opts); router.go('game'); }); }
-  else if (name === 'pause') queueMicrotask(() => router.back());
+const getProfile = () => { const p = store.get(KEYS.profile); return p && typeof p === 'object' ? p : null; };
+function toMenu() {
+  clock.cancel(); clock.resume();
+  started = false; state = null; undoStack = [];
+  // Geçmişi menü kaydına (i=0) sar: çıkış sonrası geri tuşu eski kurulum/oyun kayıtlarında dolaşmasın.
+  const i = router.current?.i ?? 0;
+  if (i > 0) history.go(-i); else router.go('menu', {}, { replace: true });
+}
+const pause = createPause(menu, {
+  router, sfx, exit: toMenu, canSave: false, // canSave: kayıt (AHI-015) gelince true
+  openHelp: () => ui.tutorial.openHelp(), openLog: () => ui.openLog(),
 });
-addEventListener('keydown', e => { if (e.key === 'Escape' && !e.target.closest?.('input,textarea')) router.back(); });
+registerMainScreens(menu, {
+  router, getProfile, openHelp: () => ui.tutorial.openHelp(),
+  startGame: opts => { start(opts); router.go('game'); },
+});
+router.onChange(({ name, params, dir }) => {
+  if (name !== 'pause') pause.hide();
+  document.getElementById('ui').classList.toggle('idle', name !== 'game' && name !== 'pause');
+  if (name === 'game') { menu.hide(); clock.resume(); }
+  else if (name === 'pause') { clock.pause(); menu.hide(); pause.show(params); }
+  else if (menu.has(name)) menu.show(name, params, dir);
+  else { menu.toast('Yakında'); router.back(); }
+});
+addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.target.closest?.('input,textarea')) router.back(); });
 router.start();
 
 // Debug handle for manual/CDP testing.

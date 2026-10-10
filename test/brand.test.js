@@ -16,3 +16,16 @@ test('no AI tool names in tracked files', () => {
 test('README credits ssilistre.dev', () => {
   assert.match(readFileSync('README.md', 'utf8'), /ssilistre\.dev/);
 });
+
+test('index.html and manifest carry the ssilistre.dev credit (X02)', () => {
+  const html = readFileSync('index.html', 'utf8');
+  assert.match(html, /<meta name="author" content="ssilistre\.dev">/);
+  assert.match(html, /<meta name="description" content="[^"]*ssilistre\.dev[^"]*">/);
+  assert.match(html, /<meta property="og:site_name" content="Ahilik Yolu">/);
+  assert.match(readFileSync('manifest.webmanifest', 'utf8'), /"description":\s*"[^"]*ssilistre\.dev/);
+});
+
+test('main menu footer links ssilistre.dev (X02)', () => {
+  const src = readFileSync('src/menu-main.js', 'utf8');
+  assert.match(src, /href="https:\/\/ssilistre\.dev" target="_blank" rel="noopener"/);
+});

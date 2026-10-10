@@ -447,3 +447,47 @@ i.ay-dim{position:absolute;pointer-events:none;transition:all .25s}
   .ay-nope{animation:ayNopeFade .5s forwards!important} /* yalnız opaklık: hareket yok */
   @keyframes ayNopeFade{0%{opacity:0}30%{opacity:1}100%{opacity:0}}
 }
+
+/* menü ekranları (M03/M06/M09/X02) */
+.mn-menu{flex-direction:column;align-items:stretch;justify-content:center;gap:var(--sp-4)}
+.mn-side{display:flex;flex-direction:column;align-items:center;gap:var(--sp-3)}
+.mn-logo{width:70%;max-width:320px;height:auto;border-radius:var(--r-3);box-shadow:var(--sh-dialog)}
+.mn-chip{display:inline-flex;align-items:center;gap:var(--sp-2);min-height:var(--tap);padding:0 var(--sp-4) 0 var(--sp-2);border-radius:var(--r-pill);border:1px solid var(--line);background:var(--panel);font-weight:700;font-size:var(--fs-2)}
+.mn-chip .av{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:var(--gold);color:var(--ink);font:800 var(--fs-1)/1 var(--font-display);font-style:normal}
+.mn-list{display:flex;flex-direction:column;gap:var(--sp-3)}
+.mn-list .ay-btn{flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;width:100%;min-height:64px;padding:var(--sp-2) var(--sp-4);text-align:left;font-size:var(--fs-2)}
+.mn-list .ay-btn small{font-size:var(--fs-1);font-weight:600;opacity:.85}
+.mn-list .ay-btn .t{display:inline-flex;align-items:center;gap:var(--sp-2)}
+.mn-credit{flex:none;display:flex;flex-direction:column;align-items:center;gap:0;margin-top:var(--sp-3);text-align:center;font-size:13px;color:var(--parch);opacity:.75}
+.mn-credit a{display:inline-flex;align-items:center;min-height:var(--tap);padding:0 var(--sp-1);color:var(--gold);font-weight:700}
+.mn-credit small{font-size:13px}
+@media (max-height:700px){.mn-menu{justify-content:flex-start}.mn-logo{width:48%}.mn-list .ay-btn{min-height:52px}.mn-list .ay-btn small{display:none}}
+@media (min-width:901px){
+  .mn-menu{flex-direction:row;align-items:center;justify-content:center;gap:var(--sp-6);max-width:920px}
+  .mn-menu .mn-side{flex:1 1 0;gap:var(--sp-5)}
+  .mn-menu .mn-logo{width:100%;max-width:420px}
+  .mn-menu .mn-list{flex:none;width:440px;padding:var(--sp-5);border-radius:var(--r-3);background:var(--panel);border:1px solid var(--line);box-shadow:var(--sh-card);box-sizing:border-box}
+  .mn-credit{position:fixed;right:max(var(--sp-4),var(--sar));bottom:max(var(--sp-2),var(--sab));margin:0;flex-direction:row;gap:var(--sp-3)}
+}
+.mn-lead{margin:0;font-size:var(--fs-1)}
+.mn-note{margin:var(--sp-2) 0 0;font-size:var(--fs-1)}
+.mn-local .ay-prow .ay-input{min-height:var(--tap)}
+.mn-local .ay-seg button,.mn-local .ay-st{min-height:var(--tap);font-size:var(--fs-1)}
+.mn-local .mn-card h2 small{font:600 var(--fs-1) var(--font-ui);opacity:.8}
+.mn-local .ay-tg small{font-size:var(--fs-1)}
+@media (min-width:901px){.mn-local .ay-players{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2) var(--sp-4)}.mn-local,.mn-screen .mn-head,.mn-screen .mn-foot{max-width:640px}}
+.mn-pausewrap{position:fixed;inset:0;z-index:calc(var(--z-curtain) + 1);display:flex;align-items:center;justify-content:center;padding:var(--sp-4);box-sizing:border-box;background:var(--scrim);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);font:600 var(--fs-1)/var(--lh-body) var(--font-ui);color:var(--parch)}
+.mn-pausewrap[hidden]{display:none}
+.mn-pausebox{width:min(100%,360px);animation-duration:var(--d-pop)}
+.mn-pausebox h2{text-align:center}
+.mn-pausebox .ay-btn{width:100%;font-size:var(--fs-1)}
+.mn-pausebox .mn-exit{color:var(--danger-ink)}
+/* position:fixed her kökü ayrı katman yapar: Duraklat açıkken menü kökü (onay penceresi, toast) pencerenin üstüne alınır;
+   yardım penceresi (#ui içinde) menü ekranının üstünde görünsün diye #ui yükseltilir. Menüdeyken eski oyun arayüzü gizli. */
+body:has(.mn-pausewrap) .mn-root{z-index:calc(var(--z-curtain) + 2)}
+body:has(.ay-tut.help) #ui{z-index:var(--z-tut)}
+#ui.idle>:not(.ay-tut):not(.ay-loading){visibility:hidden}
+.mn-pausewrap button{font:inherit;color:inherit;touch-action:manipulation;cursor:pointer}
+.mn-pausewrap .ay-btn.primary{color:var(--ink)}
+.mn-pausewrap .mn-switch:focus-visible,.mn-pausewrap .ay-btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+@media (max-width:900px){.ay-round,.ay-slot{width:44px;height:44px}}
