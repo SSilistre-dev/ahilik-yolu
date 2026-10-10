@@ -8,6 +8,7 @@ self.SHELL_FILES = [
   "src/data.js",
   "src/game.js",
   "src/main.js",
+  "src/menu.js",
   "src/path.js",
   "src/pwa.js",
   "src/scene.js",
