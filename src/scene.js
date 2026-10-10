@@ -12,6 +12,7 @@ const BASE_H = 0.1, CITY_H = 0.14; // tile top heights
 const ART = 0.7, ART_OFF = 0.07;   // printed art plate size and shift toward the camera
 const PULSE_MS = 33;               // goal/highlight pulse redraw interval (~30 fps)
 const IDLE_MS = 66;                // idle animation redraw interval (~15 fps)
+const IDLE_SLEEP_MS = 5000;        // ornamental loop (pulse, flag, breathing) stops after this long without input
 const tileX = (c) => (c - 2) * P, tileZ = (r) => (r - 2) * P;
 const topOf = (t) => (t.kind === 'city' ? CITY_H : BASE_H);
 const IDENT = new THREE.Matrix4();
@@ -116,13 +117,14 @@ function slab(w, r, h, bev, lidColor, sideColor, lidUV) {
 }
 
 // ---------- scene ----------
-export function createScene(canvas, { onTileTap, onProgress } = {}) {
+export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {}) {
   THREE.Cache.enabled = true;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = false; // only pawns move; frame() requests a refresh when one does
   canvas.style.touchAction = 'none'; canvas.style.width = canvas.style.height = '100%'; canvas.style.display = 'block';
 
   const scene = new THREE.Scene();
@@ -319,7 +321,7 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS['pawn' + (i % 4)], g = loaded['pawn' + (i % 4)], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
     const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.2, 0.22, 0.05, 24), true), color), paint(norm(new THREE.TorusGeometry(0.205, 0.014, 6, 28).rotateX(Math.PI / 2).translate(0, 0.025, 0), true), 0xfff4d6)]), procMat);
     disc.receiveShadow = true; disc.position.y = 0.025; body.position.y = 0.04;
-    const pw = { root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false };
+    const pw = { root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false, live: true };
     const characterOk = g && (() => {
       try {
         const skins = []; model.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
@@ -353,6 +355,16 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     a.enabled = true; a.setEffectiveWeight(1); b.setEffectiveWeight(0);
     if (on) pw.walk.time = 0;
   };
+  // Frees what a pawn owns: its geometries, skeleton bone texture, own materials. Never the shared procMat or the glTF texture.
+  function disposePawn(pw) {
+    scene.remove(pw.root);
+    if (pw.mixer) { pw.mixer.stopAllAction(); pw.mixer.uncacheRoot(pw.mixer.getRoot()); pw.mixer = null; }
+    pw.root.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.skeleton) o.skeleton.dispose();
+      for (const m of [].concat(o.material || [])) if (m !== procMat) m.dispose();
+    });
+  }
   function pawnTarget(state, p) {
     const t = state.tiles[state.players[p].pos], n = t.occupants.length, i = Math.max(0, t.occupants.indexOf(p));
     const bx = tileX(t.c) + ART_OFF * 0.6, bz = tileZ(t.r) + ART_OFF + (t.kind === 'city' ? 0.06 : 0);
@@ -373,12 +385,13 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
   goalRing.position.y = 0.04; goalRing.renderOrder = 4;
   const flagBase = new THREE.Group(); flagBase.position.set(0, 0.0, 0.42); flagBase.add(pole, cloth, knob); goalG.add(flagBase, goalRing);
   let goalOn = false;
-  function animGoal(now) {
+  function animGoal(now, still) {
+    if (still) now = 0;
     const pa = clothGeo.attributes.position;
-    for (let i = 0; i < pa.count; i++) { const x = clothBase[i * 3]; pa.setZ(i, Math.sin(x * 9 - now / 160) * 0.05 * (x / 0.62)); pa.setY(i, clothBase[i * 3 + 1] + Math.sin(x * 7 - now / 200) * 0.012 * x / 0.62); }
+    for (let i = 0; i < pa.count; i++) { const x = clothBase[i * 3]; pa.setZ(i, still ? 0 : Math.sin(x * 9 - now / 160) * 0.05 * (x / 0.62)); pa.setY(i, clothBase[i * 3 + 1] + (still ? 0 : Math.sin(x * 7 - now / 200) * 0.012 * x / 0.62)); }
     pa.needsUpdate = true;
-    const k = 0.5 + 0.5 * Math.sin(now / 330);
-    goalRing.scale.setScalar(0.85 + 0.22 * k); goalRing.material.opacity = 0.5 + 0.5 * (1 - k);
+    const k = still ? 0.5 : 0.5 + 0.5 * Math.sin(now / 330);
+    goalRing.scale.setScalar(still ? 1 : 0.85 + 0.22 * k); goalRing.material.opacity = still ? 1 : 0.5 + 0.5 * (1 - k);
     flagBase.position.y = 0.02 + 0.03 * k;
   }
   function setGoal(idx) {
@@ -451,27 +464,31 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     const to = { top: Math.max(0, top), bottom: Math.max(0, bottom), right: Math.max(0, right) };
     if (to.top === insTo.top && to.bottom === insTo.bottom && to.right === insTo.right) return;
     insTo = to;
-    if (!camReady || first) { Object.assign(ins, to); fitCamera(); kick(); return; }
+    wake();
+    if (!camReady || first || calm) { Object.assign(ins, to); fitCamera(); return; }
     const from = { ...ins };
     anim('ins', 300, (u) => { const e = u * u * (3 - 2 * u); for (const k in to) ins[k] = from[k] + (to[k] - from[k]) * e; fitCamera(); });
   }
 
   // ----- animation loop (on demand; throttled idle loop only while character animations exist) -----
   const anims = new Map();
-  let raf = 0, pulse = false, lastT = 0, disposed = false;
-  const anim = (key, dur, fn) => { anims.set(key, { t0: performance.now(), dur, fn }); kick(); };
+  let raf = 0, timer = 0, pulse = false, lastT = 0, disposed = false, lost = false, activeIdx = 0, shadowDirty = true, lastActivity = performance.now();
+  const mq = matchMedia('(prefers-reduced-motion: reduce)');
+  let calm = mq.matches; // reduced motion: snap instead of animating, no ornamental loop
+  const onMotion = (e) => { calm = e.matches; wake(); };
+  mq.addEventListener('change', onMotion);
+  const anim = (key, dur, fn) => { anims.set(key, { t0: performance.now(), dur, fn }); wake(); };
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   const yawBusy = () => pawns.some((p) => Math.abs(wrap(p.yawT - p.yaw)) > 0.01);
-  const idleLoop = () => pawns.some((p) => p.mixer);
   // per-tile dynamic state
   const coins = BOARD.map(() => ({ s: 0, g: 0, pop: 1 })), closedU = BOARD.map(() => 0), closedWant = BOARD.map(() => false);
   let hl = [];
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
-  function layout(now) {
+  function layout(now, still) {
     // rings
     for (let i = 0; i < 25; i++) {
       const on = hl.includes(i), t = BOARD[i];
-      M.compose(V3(tileX(t.c), topOf(t) + 0.025 + (on ? 0.012 * Math.sin(now / 280 + i) : 0), tileZ(t.r)), Q.identity(), on ? V3(1, 1, 1) : V3(0, 0, 0));
+      M.compose(V3(tileX(t.c), topOf(t) + 0.025 + (on && !still ? 0.012 * Math.sin(now / 280 + i) : 0), tileZ(t.r)), Q.identity(), on ? V3(1, 1, 1) : V3(0, 0, 0));
       rings.setMatrixAt(i, M);
     }
     rings.instanceMatrix.needsUpdate = true;
@@ -492,25 +509,44 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     coinS.count = ns; coinG.count = ng; fenceM.count = nf; crateM.count = nc;
     for (const m of [coinS, coinG, fenceM, crateM]) m.instanceMatrix.needsUpdate = true;
   }
+  function schedule(wait) { if (!raf && !timer) timer = setTimeout(() => { timer = 0; kick(); }, wait); }
   function frame(now) {
     raf = 0;
-    if (disposed) return;
-    const busy = anims.size > 0 || yawBusy();
-    if (!busy && now - lastT < (pulse || goalOn ? PULSE_MS : IDLE_MS)) { raf = requestAnimationFrame(frame); return; }
+    if (disposed || lost) return;
+    const busy = anims.size > 0 || yawBusy(), act = pawns[activeIdx];
+    const ornament = !calm && (pulse || goalOn || !!(act && act.mixer));
+    const asleep = !busy && ornament && performance.now() - lastActivity > IDLE_SLEEP_MS;
+    const wait = (pulse || goalOn ? PULSE_MS : IDLE_MS) - (now - lastT);
+    if (!busy && !asleep && wait > 0) { schedule(wait); return; }
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000)); lastT = now;
+    const still = calm || asleep; // static pose: no pulse, no flag wave
     for (const [k, a] of anims) { const u = Math.min(1, Math.max(0, (now - a.t0) / a.dur)); a.fn(u); if (u >= 1) anims.delete(k); }
-    for (const p of pawns) { p.yaw += wrap(p.yawT - p.yaw) * Math.min(1, dt * 14); p.body.rotation.y = p.yaw; if (p.mixer) p.mixer.update(dt); }
-    if (pulse) glow.opacity = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now / 220)); else glow.opacity = 1;
-    if (goalOn) animGoal(now);
-    layout(now);
+    let moved = shadowDirty || anims.size > 0;
+    pawns.forEach((p, i) => {
+      p.yaw += wrap(p.yawT - p.yaw) * Math.min(1, dt * 14); p.body.rotation.y = p.yaw;
+      if (!p.mixer) return;
+      const walking = anims.has('p' + i), run = walking || (i === activeIdx && !still);
+      if (run) { p.mixer.update(dt); p.live = moved = true; }
+      else if (p.live && !(i === activeIdx && asleep)) { if (p.idle) p.idle.time = 0; p.mixer.update(0); p.live = false; moved = true; } // inactive pawn: rewind and freeze
+    });
+    if (yawBusy()) moved = true;
+    if (moved) renderer.shadowMap.needsUpdate = true;
+    shadowDirty = false;
+    glow.opacity = pulse && !still ? 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(now / 220)) : 1;
+    if (goalOn) animGoal(now, still);
+    layout(now, still);
     renderer.render(scene, camera);
-    if (anims.size || pulse || goalOn || yawBusy() || idleLoop()) raf = requestAnimationFrame(frame);
+    if (anims.size || yawBusy() || (ornament && !asleep)) kick();
   }
-  function kick() { if (!raf && !disposed) raf = requestAnimationFrame(frame); }
+  function kick() { clearTimeout(timer); timer = 0; if (!raf && !disposed) raf = requestAnimationFrame(frame); }
+  function wake() { lastActivity = performance.now(); kick(); }
+  const onVisible = () => { if (!document.hidden) wake(); };
+  document.addEventListener('visibilitychange', onVisible);
 
   // ----- state sync -----
   let first = true, pending = null, seedSeen = null;
   function hop(pw, i, to) {
+    if (calm) { anims.delete('p' + i); pw.root.position.copy(to); pw.target.copy(to); pw.yaw = pw.yawT = 0; return; }
     const from = pw.root.position.clone(), d = from.distanceTo(to);
     const dur = d < 0.5 ? 220 : d < 1.8 ? 400 : Math.min(900, 400 + d * 120), h = d < 0.5 ? 0.03 : d < 1.8 ? 0.14 : Math.min(0.8, 0.3 + d * 0.18), walk = d >= 0.5;
     if (d > 0.3) pw.yawT = Math.atan2(to.x - from.x, to.z - from.z);
@@ -521,8 +557,10 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
       if (u >= 1) { pw.root.position.copy(to); pw.yawT = 0; if (walk) setWalk(pw, false); }
     });
   }
+  let lastRender = null;
   function render(state, { highlight = [], goal = null, path = [] } = {}) { // any `focus` option is ignored: camera always frames the board
-    if (!built) { pending = [state, { highlight, goal, path }]; hl = highlight; pulse = highlight.length > 0; kick(); return; }
+    lastRender = [state, { highlight, goal, path }]; activeIdx = state.active; shadowDirty = true;
+    if (!built) { pending = [state, { highlight, goal, path }]; hl = highlight; pulse = highlight.length > 0; wake(); return; }
     const fresh = state.seed !== seedSeen; seedSeen = state.seed; // new game: snap, no animations
     if (fresh) { first = true; anims.clear(); }
     setGoal(goal); setPath(state, path, goal);
@@ -533,29 +571,29 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
       else if (fresh) { setWalk(pw, false); pw.yaw = pw.yawT = 0; pw.root.position.copy(to); pw.target.copy(to); }
       else if (!pw.target.equals(to)) hop(pw, i, to);
     });
-    while (pawns.length > state.players.length) { const p = pawns.pop(); scene.remove(p.root); p.mixer && p.mixer.stopAllAction(); }
+    while (pawns.length > state.players.length) disposePawn(pawns.pop());
 
     for (const t of state.tiles) {
       const c = coins[t.idx], s = Math.min(4, t.badges % 5), g = Math.min(5, Math.floor(t.badges / 5));
       if (s !== c.s || g !== c.g) {
         c.s = s; c.g = g;
-        if (!first) anim('b' + t.idx, 320, (u) => { c.pop = 1 + 0.5 * Math.sin(Math.PI * u); });
+        if (!first && !calm) anim('b' + t.idx, 320, (u) => { c.pop = 1 + 0.5 * Math.sin(Math.PI * u); });
       }
       if (t.closed !== closedWant[t.idx]) {
         closedWant[t.idx] = t.closed;
         const from = closedU[t.idx], to = t.closed ? 1 : 0;
-        if (first) closedU[t.idx] = to; else anim('c' + t.idx, 320, (u) => { closedU[t.idx] = from + (to - from) * u * u * (3 - 2 * u); });
+        if (first || calm) { anims.delete('c' + t.idx); closedU[t.idx] = to; } else anim('c' + t.idx, 320, (u) => { closedU[t.idx] = from + (to - from) * u * u * (3 - 2 * u); });
       }
     }
     hl = highlight; pulse = highlight.length > 0;
-    first = false; kick();
+    first = false; wake();
   }
 
   // ----- resize -----
   const parent = canvas.parentElement || canvas;
   function resize() {
     const w = Math.max(1, parent.clientWidth), h = Math.max(1, parent.clientHeight);
-    renderer.setSize(w, h, false); vw = w; vh = h; fitCamera(); kick();
+    renderer.setSize(w, h, false); vw = w; vh = h; fitCamera(); wake();
   }
   const ro = new ResizeObserver(resize); ro.observe(parent); resize(); camReady = true;
   layout(0);
@@ -585,7 +623,7 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     return c >= 0 && c < 5 && r >= 0 && r < 5 ? r * 5 + c : -1;
   }
   const onCancel = () => { down = null; };
-  canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('pointerdown', wake); canvas.addEventListener('pointerdown', onDown); canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onCancel);
 
   function projectTile(idx) {
     const t = BOARD[idx], r = canvas.getBoundingClientRect(), v = V3(tileX(t.c), topOf(t), tileZ(t.r));
@@ -593,17 +631,38 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
   }
 
+  // ----- WebGL context loss: three.js re-inits its GPU state itself; we redraw and tell the player if it never returns -----
+  let lostTimer = 0;
+  const notice = document.createElement('div');
+  notice.setAttribute('role', 'alert'); notice.hidden = true;
+  notice.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;max-width:min(88vw,340px);padding:16px;border-radius:12px;background:#2a1d15;color:#fff0d8;text-align:center;font:16px/1.4 sans-serif;box-shadow:0 4px 24px #0008';
+  notice.innerHTML = '<p style="margin:0 0 12px">Ekran bir an dondu. Biraz bekle; düzelmezse Yeniden Yükle\'ye bas.</p><button type="button" style="min-height:44px;padding:0 20px;border:0;border-radius:10px;background:#ffb000;color:#2a1d15;font:bold 16px sans-serif">Yeniden Yükle</button>';
+  notice.querySelector('button').addEventListener('click', () => location.reload());
+  (canvas.parentElement || document.body).appendChild(notice);
+  const onLost = (e) => {
+    e.preventDefault(); lost = true; onContextLost && onContextLost(true);
+    lostTimer = setTimeout(() => { notice.hidden = false; }, 3000);
+  };
+  const onRestored = () => {
+    clearTimeout(lostTimer); notice.hidden = true; lost = false; onContextLost && onContextLost(false);
+    first = true; shadowDirty = true; // badge pops must not replay
+    if (lastRender) render(...lastRender); else wake();
+  };
+  canvas.addEventListener('webglcontextlost', onLost); canvas.addEventListener('webglcontextrestored', onRestored);
+
   const ready = Promise.all(jobs).then(() => {
     try { buildWorld(); } catch (e) { console.error('buildWorld failed', e); }
     if (pending) { const p = pending; pending = null; render(...p); }
-    onProgress && onProgress(1); kick();
+    onProgress && onProgress(1); shadowDirty = true; wake();
   }).catch((e) => { console.error(e); onProgress && onProgress(1); });
 
   function dispose() {
-    disposed = true; cancelAnimationFrame(raf); raf = 0; anims.clear(); pulse = goalOn = false;
+    disposed = true; cancelAnimationFrame(raf); raf = 0; clearTimeout(timer); timer = 0; clearTimeout(lostTimer); notice.remove();
+    mq.removeEventListener('change', onMotion); document.removeEventListener('visibilitychange', onVisible);
+    canvas.removeEventListener('pointerdown', wake); canvas.removeEventListener('webglcontextlost', onLost); canvas.removeEventListener('webglcontextrestored', onRestored); anims.clear(); pulse = goalOn = false;
     ro.disconnect();
     canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel);
-    pawns.forEach((p) => p.mixer && p.mixer.stopAllAction());
+    pawns.forEach(disposePawn);
     scene.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
       for (const m of [].concat(o.material || [])) { for (const k of ['map', 'emissiveMap']) if (m[k]) m[k].dispose(); m.dispose(); }
@@ -615,6 +674,6 @@ export function createScene(canvas, { onTileTap, onProgress } = {}) {
     let skinned = 0; p.body.traverse((o) => { if (o.isSkinnedMesh) skinned++; });
     return { i, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i) };
   });
-  const info = () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
+  const info = () => ({ frames: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
   return { ready, render, setInsets, projectTile, dispose, info, pawnInfo }; // info(): dev-only stats
 }
