@@ -496,7 +496,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       for (const ev of events) {
         { const tx = evText(ev); if (tx) toast(tx); else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
         if (ev.type === 'ahlak') {
-          const id = ev.card || (/boş/.test(ev.text || '') ? null : st.decks?.ahlakDiscard?.at(-1));
+          const id = ev.empty ? null : (ev.card || st.decks?.ahlakDiscard?.at(-1));
           if (id) reveal(id, { caption: ev.text });
         } else if (ev.type === 'trade') {
           tradeFx(ev, 300 + 1500 * k++);

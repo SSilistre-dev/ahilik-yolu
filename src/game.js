@@ -119,7 +119,11 @@ function endTurn(s, ev) {
   s.pending = null; s.declined = []; s.offersThisTurn = 0; s.roadTries = 0;
   s.active = next;
   if (next === s.startIdx && s.endgame) { s.phase = 'over'; log(ev, 'over', 'Oyun bitti.'); }
-  else { s.phase = 'ahlak'; refill(s, next, ev); } // rule 26: top up to 6 before the ahlak card
+  else {
+    refill(s, next, ev); // rule 26: top up to 6 before the ahlak card
+    if (s.decks.ahlak.length) s.phase = 'ahlak';
+    else { s.phase = 'move'; log(ev, 'ahlak', 'Ahlak destesi bitti. Bu tur ahlak kartı yok.', { pIdx: next, empty: true }); }
+  }
 }
 
 const moveTargets = (s, p, id) => {
@@ -218,7 +222,7 @@ export function apply(state, a) {
     case 'drawAhlak': {
       need(s.phase === 'ahlak');
       const id = s.decks.ahlak.pop();
-      if (!id) { s.phase = 'move'; log(ev, 'ahlak', 'Ahlak destesi boş.'); break; }
+      if (!id) { s.phase = 'move'; log(ev, 'ahlak', 'Ahlak destesi bitti. Bu tur ahlak kartı yok.', { pIdx: me, empty: true }); break; }
       const c = CARDS[id], ad = ILKELER[c.ilke];
       if (!s.decks.ahlak.length) setEnd(s, ev, 'ahlak destesi bitti');
       if (!c.negative) {
