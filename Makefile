@@ -1,4 +1,4 @@
-.PHONY: olc qa sim
+.PHONY: olc qa sim dev-online test-srv
 
 JS := $(wildcard src/*.js server/*.js test/*.js test/*.mjs)
 
@@ -20,3 +20,12 @@ qa:
 SIM_ARGS ?= --games 2000 --players 4 --levels medium --seed 1
 sim:
 	set -eo pipefail; node test/sim.mjs $(SIM_ARGS)
+
+# Çevrimiçi sunucu (Docker): yerelde http://localhost:$(PORT). ws yalnız konteynerde kurulur.
+PORT ?= 8080
+dev-online:
+	PORT=$(PORT) docker compose up --build
+
+# ws gerektiren sunucu testleri (test/*.srv.mjs) konteynerde koşar.
+test-srv:
+	docker compose run --rm server npm test --prefix server
