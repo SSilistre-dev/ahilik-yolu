@@ -371,7 +371,9 @@ function pickBot(room, who, level, deps) {
     ?? ['endTurn', 'pass', 'drawAhlak'].map(type => legal.find(l => l.type === type)).find(Boolean) ?? legal[0];
 }
 
-const isExpired = (room, now) => now - room.lastActivity >= tm(room).idleMs || (!room.joined && now - room.createdAt >= tm(room).abandonedMs);
+// Terk edilmiş oda: hiç insan katılmadı ya da lobide insan kalmadı (ör. smoke testi katılıp ayrıldı) -> abandonedMs sonra silinir.
+const abandonedAt = room => !room.joined ? room.createdAt : room.phase === 'lobby' && !humans(room).length ? room.lastActivity : null;
+const isExpired = (room, now) => now - room.lastActivity >= tm(room).idleMs || (abandonedAt(room) !== null && now - abandonedAt(room) >= tm(room).abandonedMs);
 const lostSeat = (room, now) => room.seats.findIndex(s => isHuman(s) && !s.online && s.lostAt !== null && s.lostAt + tm(room).graceMs <= now
   && (room.phase === 'lobby' || (room.phase === 'game' && !s.takeover)));
 
@@ -428,7 +430,7 @@ function dueStep(room, now, rand, deps) {
 // En yakın vade (epoch ms). Oda silinene kadar hep bir vade vardır (ömür).
 export function nextDeadline(room) {
   const t = room.timers ?? {}, tmg = tm(room), c = [room.lastActivity + tmg.idleMs];
-  if (!room.joined) c.push(room.createdAt + tmg.abandonedMs);
+  if (abandonedAt(room) !== null) c.push(abandonedAt(room) + tmg.abandonedMs);
   if (room.phase === 'game') {
     c.push(t.botAt, t.answerAt);
     if (!room.game.state.pending) c.push(t.turnAt);

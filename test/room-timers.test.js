@@ -208,6 +208,16 @@ test('oda ömrü: kimse katılmamış oda 1 sa\'te expired', () => {
   assert.equal(tick(room, T0 + HOUR, rand).expired, false);
 });
 
+test('oda ömrü: katılıp ayrılan son insandan sonra boş lobi 1 sa\'te expired', () => {
+  const room = createRoom({ code: 'K7M2QX', now: T0 });
+  const { token } = join(room, { name: 'smoke', avatar: 0 }, T0 + 5, rand);
+  receive(room, token, { v: 1, t: 'leave' }, T0 + 10, rand);
+  assert.equal(room.seats.length, 0);
+  assert.equal(nextDeadline(room), T0 + 10 + HOUR);
+  assert.equal(tick(room, T0 + 10 + HOUR - 1, rand).expired, false);
+  assert.equal(tick(room, T0 + 10 + HOUR, rand).expired, true);
+});
+
 test('nextDeadline: en yakın vade, ömür vadesi her zaman var', () => {
   const empty = createRoom({ code: 'K7M2QX', now: T0 });
   assert.equal(nextDeadline(empty), T0 + HOUR);
