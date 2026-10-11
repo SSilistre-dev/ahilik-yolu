@@ -1,2 +1,2 @@
 // Sürüm tek yerde okunur (menü altlığı, Hakkında). index.html `?v=` ve sw.js `V` ile aynı olmak zorunda: test/version.test.js.
-export const VERSION = 18;
+export const VERSION = 19;

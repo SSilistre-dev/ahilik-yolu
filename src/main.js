@@ -29,6 +29,7 @@ let sceneReady = false;
 let prog = 0;
 let started = false;
 let botFails = 0;
+let botSeq = 0;
 
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
@@ -58,7 +59,7 @@ readyP.then(() => { sceneReady = true; });
 function renderScene() {
   const p = state.players[state.active];
   const show = !p.bot && ['ahlak', 'close', 'move'].includes(state.phase);
-  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [] });
+  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [], viewer: state.players.findIndex(q => !q.bot) });
 }
 
 async function start(opts) {
@@ -102,6 +103,7 @@ function act(action, isBot) {
   if (isBot) botFails = 0;
   if (!isBot) sfx.play('click');
   if (isBot) lastBotAct = Date.now();
+  if (isBot) ui.botStep?.(res.events, actor(state), res.state); // state henüz eski: aksiyonu yapan koltuk
   if (isBot || action.type !== 'move') undoStack = [];
   else if (res.events.some(e => e.type === 'trade')) undoStack = [];
   else undoStack.push(state);
@@ -132,7 +134,7 @@ function effects(events) {
 const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
 
 function update(events) {
-  clock.cancel();
+  clock.cancel(); botSeq++;
   const legal = legalActions(state);
   const p = state.players[state.active], who = state.players[actor(state)];
   if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
@@ -142,13 +144,16 @@ function update(events) {
   effects(events);
   if (state.phase !== 'over' && who.bot) {
     const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
-    clock.schedule(botNext, events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot);
+    // Yürüyen piyon durmadan ve UI kuyruğundaki adımlar (ahlak/ticaret animasyonu dahil) bitmeden sıradaki bot aksiyonu başlamaz.
+    const ms = events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot, seq = ++botSeq;
+    scene.whenIdle().then(() => { if (seq === botSeq && state) clock.schedule(botNext, Math.max(ms, ui.botBacklog?.() ?? 0)); });
   }
 }
 
 // Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
 addEventListener('pointerdown', () => {
   if (!clock.pending || !state || !state.players[actor(state)].bot) return;
+  ui.botSkip?.();
   clock.schedule(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
 }, true);
 
@@ -163,7 +168,7 @@ applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
 function toMenu() {
-  clock.cancel(); clock.resume();
+  clock.cancel(); clock.resume(); botSeq++; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
   started = false; state = null; undoStack = [];
   // Geçmişi menü kaydına (i=0) sar: çıkış sonrası geri tuşu eski kurulum/oyun kayıtlarında dolaşmasın.
   const i = router.current?.i ?? 0;
@@ -193,6 +198,6 @@ const hs = history.state;
 router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { clock, router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
 
 initPwa();
