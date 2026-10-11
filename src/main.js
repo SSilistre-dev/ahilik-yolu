@@ -134,7 +134,7 @@ function effects(events) {
 const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
 
 function update(events) {
-  clock.cancel();
+  clock.cancel(); botSeq++;
   const legal = legalActions(state);
   const p = state.players[state.active], who = state.players[actor(state)];
   if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
@@ -168,7 +168,7 @@ applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
 function toMenu() {
-  clock.cancel(); clock.resume();
+  clock.cancel(); clock.resume(); botSeq++; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
   started = false; state = null; undoStack = [];
   // Geçmişi menü kaydına (i=0) sar: çıkış sonrası geri tuşu eski kurulum/oyun kayıtlarında dolaşmasın.
   const i = router.current?.i ?? 0;
