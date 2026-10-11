@@ -1,4 +1,4 @@
-.PHONY: olc qa sim dev-online test-srv
+.PHONY: olc qa sim dev-online test-srv smoke e2e-online
 
 JS := $(wildcard src/*.js server/*.js test/*.js test/*.mjs)
 
@@ -29,3 +29,11 @@ dev-online:
 # ws gerektiren sunucu testleri (test/*.srv.mjs) konteynerde koşar. Proje adı COMPOSE_PROJECT_NAME env'den gelir (paralel koşular çakışmasın).
 test-srv:
 	docker compose run --rm server npm test --prefix server
+
+# Deploy smoke (OL-8): canlı sunucuya karşı. SMOKE_URL, SMOKE_EXPECT_VERSION (varsayılan src/version.js). make qa çağırmaz.
+smoke:
+	node dev/smoke.mjs
+
+# Uçtan uca çevrimiçi test (OL-7): docker + headless Brave gerekir; make qa çağırmaz.
+e2e-online:
+	node test/e2e-online.mjs

@@ -260,7 +260,7 @@ stateDiagram-v2
 | Kopan bağlantı (oyunda) | 30 sn tolerans | Koltuk `takeover:true` olur, Orta bot oynar. Oyuncu token ile dönünce geri alır. |
 | Kopan bağlantı (lobide) | 30 sn tolerans | Koltuk düşer; host ise devredilir. |
 | Boşta oda | 24 sa | Bellekten ve diskten silinir. |
-| Hiç insan katılmamış oda | 1 sa | Silinir (terk edilmiş `POST /api/rooms` çağrıları depoyu doldurmasın). |
+| Hiç insan katılmamış oda ya da insanı kalmamış lobi | 1 sa | Silinir (terk edilmiş `POST /api/rooms` çağrıları ve smoke odaları depoyu doldurmasın). |
 
 **Kalıcılık.** Her başarılı mutasyondan sonra `/data/rooms/<kod>.json` atomik olarak yazılır (geçici dosya + `rename`). Snapshot `{lobby, state, version, log(son 200), deadlines}` içerir. Konteyner yeniden başlarsa açılışta diskteki odalar yüklenir; istemciler token ile aynı koltuğa döner. Yeniden dağıtım (deploy) en çok birkaç saniyelik kopma yaratır.
 
@@ -404,7 +404,8 @@ Değerler (adres, anahtar, IP, webhook) yalnız yerel geliştirici notlarındad�
 | Bot seviyeleri ve denge | `make sim` (`test/sim.mjs`) | PR'a tablo eklenir, kapıda değil |
 | Sunucu protokolü | `test/online.smoke.mjs`: `docker compose up` + Node global `WebSocket`, 2 insan + 2 bot tam oyun | `make qa` |
 | UI | Playwright tek dosya, host Brave (`E2E_BROWSER_PATH`). Tek oyunculu tam tur + 2 sekmeli çevrimiçi lobi | `make qa` |
-| Prod | Dağıtım sonrası smoke testi | CI |
+| Çevrimiçi uçtan uca | `make e2e-online` (`test/e2e-online.mjs`): docker compose (`ahilik-e2e`, port 8093) + headless Brave/CDP, iki bağlam: oda kur, katıl, bot, oyun, tepki, yenileyince geri dön, oyun sonu, Tekrar Oyna | elle (docker ister; `make qa` çağırmaz) |
+| Prod | `make smoke` (`dev/smoke.mjs`; `SMOKE_URL`, `SMOKE_EXPECT_VERSION`): `GET /` + `?v=`, `/api/health`, `POST /api/rooms`, ws hello/welcome/leave | dağıtım sonrası elle/CI |
 
 ## 14. Mobil (iOS / Android)
 

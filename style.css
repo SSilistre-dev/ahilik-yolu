@@ -536,3 +536,52 @@ html[data-motion="off"] *,html[data-motion="off"] *::before,html[data-motion="of
 @media (max-width:900px){.ay-fan{--cw:clamp(34px,calc((100vw - 56px) / (1 + (var(--n,6) - 1) * var(--step))),66px)}}
 /* İstenen kart (takas): Ahi Evran/Kargo yol kartları dikey; yuvarlak kutuda kırpılmaz. */
 .ay-want img[src*="/yol-"]{width:auto;height:34px;aspect-ratio:198/360;border-radius:4px;border-width:2px;object-fit:contain}
+
+/* --- online menü (OL-3/4) --- */
+.mn-online .mn-card .ay-btn{width:100%}
+.mn-online .mn-card h2 small{font:600 var(--fs-1) var(--font-ui);opacity:.8}
+.ol-codein{text-align:center;font:800 var(--fs-5)/1 var(--font-display);letter-spacing:.25em;text-transform:uppercase;min-height:var(--tap-lg);padding:0 var(--sp-3)}
+.ol-conn{margin:0;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-2);background:var(--panel2);border:1px solid var(--line);text-align:center;font-size:var(--fs-1);font-weight:700}
+.ol-conn.lost{border-color:var(--danger-ink);color:var(--danger-ink)}
+.ol-codecard{display:flex;flex-direction:column;align-items:center;gap:var(--sp-2);text-align:center}
+.ol-code{font:800 clamp(34px,11vw,52px)/1 var(--font-display);letter-spacing:.18em;margin-right:-.18em;color:var(--gold);user-select:all}
+.ol-seats{display:flex;flex-direction:column;gap:var(--sp-2)}
+.ol-seat{display:flex;align-items:center;gap:var(--sp-3);min-height:56px;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-2);background:var(--panel2);border:2px solid color-mix(in srgb,var(--pc) 55%,#000 20%);box-sizing:border-box}
+.ol-seat.you{border-color:var(--gold)}
+.ol-av{flex:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--pc);font-style:normal;font-size:22px;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+.ol-who{flex:1 1 auto;min-width:0;display:flex;flex-direction:column}
+.ol-who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol-who small{font-size:14px;font-weight:600;opacity:.85}
+.ol-seat .ay-btn.sm{flex:none;width:auto}
+.ol-sel{flex:none;min-height:var(--tap);padding:0 var(--sp-2);border-radius:var(--r-2);border:2px solid var(--brown);background:#fff4d6;color:var(--ink);font:700 var(--fs-1) var(--font-ui);max-width:100%}
+.ol-sel.wide{width:100%}
+.ol-addrow{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
+.ol-addrow .ay-btn{flex:1 1 auto;width:auto}
+.ol-opts:empty{display:none}
+.ol-lbl{display:block;margin:var(--sp-3) 0 var(--sp-2);font-weight:700}
+.ol-seg{width:100%}
+.ol-seg button{flex:1 1 0;min-height:var(--tap);font-size:var(--fs-1)}
+.ol-hint{text-align:center}
+.mn-foot .ay-btn.sel{background:linear-gradient(180deg,var(--ok-top),var(--ok-bot));border-color:var(--ok-ink);color:#10300a}
+/* --- online oyun içi (OL-5/6) --- */
+.ay-chip{position:relative}
+.ay-chip.off{opacity:.45;filter:saturate(.5)}
+.ay-chip.you{box-shadow:0 0 0 2px rgba(255,241,179,.55)}
+.ay-chip .ay-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ay-tag{flex:none;padding:1px 6px;border-radius:99px;background:rgba(0,0,0,.45);border:1px solid var(--line);color:var(--parch);font-size:10px;font-weight:800;line-height:1.4;white-space:nowrap}
+.ay-tag.you{background:var(--gold);border-color:var(--gold2);color:#3a2410}
+.ay-tmr{--f:1;flex:none;margin-left:auto;position:relative;isolation:isolate;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:800 11px/1 system-ui,sans-serif;color:#fff1b3;background:conic-gradient(var(--gold) calc(var(--f) * 360deg),rgba(0,0,0,.5) 0)}
+.ay-tmr::before{content:"";position:absolute;inset:3px;border-radius:50%;background:#2a1b0e;z-index:-1}
+.ay-tmr.urgent{color:#ffb3aa;background:conic-gradient(#ff5a4a calc(var(--f) * 360deg),rgba(0,0,0,.5) 0);animation:pulse 1s ease-in-out infinite}
+.ay-emo{position:absolute;left:50%;top:calc(100% + 4px);transform:translateX(-50%);z-index:6;max-width:150px;padding:5px 10px;border-radius:14px;background:var(--parch);color:#3a2410;border:2px solid var(--gold2);font-size:13px;font-weight:800;line-height:1.2;white-space:nowrap;pointer-events:none;box-shadow:0 4px 10px rgba(0,0,0,.5);animation:pop .25s ease-out}
+.ay-conn{position:absolute;left:0;right:var(--side);top:0;z-index:85;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;box-sizing:border-box;padding:calc(8px + var(--sat)) calc(12px + var(--sar)) 8px calc(12px + var(--sal));background:rgba(70,40,10,.96);border-bottom:2px solid var(--gold2);color:#fff1b3;font-size:14px;font-weight:700;text-align:center}
+.ay-conn.lost{background:rgba(120,30,20,.97);border-bottom-color:#ff8a7a}
+.ay-round[data-a="emote"]{width:44px;height:44px}
+.ay-emotes{position:absolute;inset:0 var(--side) 0 0;z-index:36;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;background:rgba(10,6,2,.55);pointer-events:auto}
+.ay-emopick{width:min(92vw,420px);box-sizing:border-box;padding:14px;border-radius:20px;background:linear-gradient(180deg,#4a331d,#2a1b0e);border:2px solid var(--gold2);box-shadow:0 12px 40px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:12px}
+.ay-emogrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.ay-emogrid .ay-btn{min-height:48px;padding:0 10px;justify-content:flex-start;font-size:15px}
+.ay-emogrid .ico{font-size:22px}
+@media (min-width:900px){.ay-emogrid{grid-template-columns:repeat(3,1fr)}}
+.ay-chips{position:relative;z-index:3}
+.ay-emotes{z-index:42}

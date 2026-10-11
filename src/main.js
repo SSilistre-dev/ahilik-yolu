@@ -1,8 +1,4 @@
-import * as G from './game.js';
-const { newGame, legalActions, apply, score } = G;
-// SPEC v4 actor(); eski motorda yok -> active.
-const actor = G.actor || (s => s.active);
-import { safeBotAction, fallbackAction } from './botstep.js';
+import { createLocalSession } from './session.js';
 import { createScene } from './scene.js';
 import { createUI } from './ui.js';
 import { createSfx } from './sfx.js';
@@ -14,22 +10,19 @@ import { createRouter } from './router.js';
 import { createBotClock } from './botclock.js';
 import { applyTokens, createMenu } from './menu.js';
 import { registerMainScreens, createPause } from './menu-main.js';
-import { getSettings, botDelays } from './store.js';
+import { registerOnlineScreens, takeRoomLink, restoreRoom } from './menu-online.js';
+import { getSettings, botDelays, store, roomKey } from './store.js';
 import { defineProfile, getProfile } from './profile.js';
 import { defineSettings, applyDom } from './settings.js';
 
-const BOT_MIN_GAP = 150;      // hızlandırmada animasyonlar okunabilir kalsın
-let state = null;
+let lastLegal = [], lastMeta = null; // hata ayıklama/e2e: son legal ve meta
+let state = null; // Session'ın verdiği view (gizli alanlar boş); motor state'ini main görmez
+let session = null;
 let highlight = [];
 const clock = createBotClock();
-let botLevels = []; // koltuk -> 'easy'|'medium'|'hard'
-let lastBotAct = 0;
-let undoStack = [];
 let sceneReady = false;
 let prog = 0;
 let started = false;
-let botFails = 0;
-let botSeq = 0;
 
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
@@ -46,7 +39,7 @@ const scene = createScene(document.getElementById('board'), {
   onProgress: p => { prog = p; if (started && !sceneReady) ui.setLoading?.(p); },
 });
 const ui = createUI(document.getElementById('ui'), {
-  onAction: a => act(a, false),
+  onAction: a => act(a),
   onTileHighlight: idxs => { highlight = idxs; if (state) renderScene(); },
   // #stage CSS already excludes the desktop sidebar, so the scene must not subtract it again.
   onLayout: ins => scene.setInsets?.({ ...ins, right: 0 }),
@@ -58,11 +51,13 @@ readyP.then(() => { sceneReady = true; });
 // Hedef/yol yalnız insan oyuncunun kendi sırasında gösterilir.
 function renderScene() {
   const p = state.players[state.active];
-  const show = !p.bot && ['ahlak', 'close', 'move'].includes(state.phase);
-  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [], viewer: state.players.findIndex(q => !q.bot) });
+  const show = !p.bot && (state.you == null || state.you === state.active) && ['ahlak', 'close', 'move'].includes(state.phase);
+  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [], viewer: state.you ?? state.players.findIndex(q => !q.bot) });
 }
 
-async function start(opts) {
+// Oyuna geçiş ortak hazırlığı: sahne yüklensin, kart görselleri önden gelsin.
+async function begin() {
+  session?.leave();
   clock.cancel(); clock.resume();
   started = true;
   if (!sceneReady) {
@@ -72,43 +67,50 @@ async function start(opts) {
   }
   // Kart görselleri önden yüklenir (ilk el açılırken boş görünmesin).
   for (const f of [...ILKE_IDS.map(i => `yol-${i}`), 'yol-back', 'ahlak-back', 'ticaret-back']) new Image().src = `assets/cards/${f}.jpg`;
-  undoStack = [];
   highlight = [];
-  botFails = 0;
-  state = newGame({ ...opts, seed: (Math.random() * 2 ** 32) >>> 0 });
-  botLevels = (opts.players ?? []).map((p) => p.level ?? 'medium');
-  update([]);
 }
 
-function act(action, isBot) {
-  if (!state) return;
+function attach(s) {
+  session = s;
+  s.onEmote?.(m => ui.emote(m.seat, m.id));
+  s.onError?.(e => ui.netError(e));
+  s.onUpdate(({ view, legal, events, meta }) => {
+    if (s !== session) return;
+    state = view; lastLegal = legal; lastMeta = meta;
+    ui.render(view, legal, events, meta);
+    renderScene();
+    effects(events);
+  });
+}
+
+async function start(opts) {
+  await begin();
+  attach(createLocalSession({
+    opts, clock,
+    delays: () => botDelays(getSettings()),
+    whenIdle: () => scene.whenIdle(),
+    backlog: () => ui.botBacklog?.() ?? 0,
+    botAct: (events, who, view) => ui.botStep?.(events, who, view),
+    fatal: e => window.__ahiFatal?.('Oyunda bir sorun oldu', 'Yeniden başlatmak ister misin?', e),
+  }));
+  session.start();
+}
+
+// Çevrimiçi oturumu (session.createOnlineSession) oyuna bağlar; lobi/menü ekranları bunu çağırır.
+async function startOnline(s) {
+  await begin();
+  attach(s);
+  router.go('game');
+}
+
+function act(action) {
+  if (!session) return;
   if (action.type === 'newGame') { sfx.play('click'); return toMenu(); }
-  if (action.type === 'undo') {
-    if (isBot || !undoStack.length) return;
-    sfx.play('click'); buzz(10);
-    state = undoStack.pop();
-    return update([]);
-  }
-  let res;
-  try {
-    res = apply(state, action);
-  } catch (e) {
-    console.error(e);
-    if (isBot) {
-      if (++botFails >= 3) return window.__ahiFatal?.('Oyunda bir sorun oldu', 'Yeniden başlatmak ister misin?', e);
-      clock.schedule(() => { const a = fallbackAction(legalActions(state)); if (a) act(a, true); }, 300);
-    }
-    return;
-  }
-  if (isBot) botFails = 0;
-  if (!isBot) sfx.play('click');
-  if (isBot) lastBotAct = Date.now();
-  if (isBot) ui.botStep?.(res.events, actor(state), res.state); // state henüz eski: aksiyonu yapan koltuk
-  if (isBot || action.type !== 'move') undoStack = [];
-  else if (res.events.some(e => e.type === 'trade')) undoStack = [];
-  else undoStack.push(state);
-  state = res.state;
-  update(res.events);
+  if (action.type === 'rematch') { sfx.play('click'); return session.rematch?.(); }
+  if (action.type === 'emote') return session.emote?.(action.id);
+  if (action.type === 'undo') { if (session.undo?.()) { sfx.play('click'); buzz(10); } return; }
+  sfx.play('click');
+  session.act(action);
 }
 
 const SOUND = { endgame: 'close', swap: 'trade', move: 'step', ahlak: 'card', close: 'close', openRoad: 'open', trade: 'trade', over: 'win' };
@@ -131,31 +133,8 @@ function effects(events) {
   if (coin) sfx.play('coin');
 }
 
-const botNext = () => act(safeBotAction(state, botLevels[actor(state)] ?? 'medium', 'local'), true);
-
-function update(events) {
-  clock.cancel(); botSeq++;
-  const legal = legalActions(state);
-  const p = state.players[state.active], who = state.players[actor(state)];
-  if (undoStack.length && state.phase === 'move' && !state.pending && !p.bot) legal.push({ type: 'undo' });
-  if (state.phase === 'over') state.__score = score(state);
-  ui.render(state, legal, events);
-  renderScene();
-  effects(events);
-  if (state.phase !== 'over' && who.bot) {
-    const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
-    // Yürüyen piyon durmadan ve UI kuyruğundaki adımlar (ahlak/ticaret animasyonu dahil) bitmeden sıradaki bot aksiyonu başlamaz.
-    const ms = events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot, seq = ++botSeq;
-    scene.whenIdle().then(() => { if (seq === botSeq && state) clock.schedule(botNext, Math.max(ms, ui.botBacklog?.() ?? 0)); });
-  }
-}
-
 // Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
-addEventListener('pointerdown', () => {
-  if (!clock.pending || !state || !state.players[actor(state)].bot) return;
-  ui.botSkip?.();
-  clock.schedule(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
-}, true);
+addEventListener('pointerdown', () => { if (session?.skipWait?.()) ui.botSkip?.(); }, true);
 
 // Kart seçimi titreşimi.
 document.getElementById('ui').addEventListener('click', e => { if (e.target.closest('.ay-card')) buzz(10); });
@@ -168,8 +147,11 @@ applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
 function toMenu() {
-  clock.cancel(); clock.resume(); botSeq++; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
-  started = false; state = null; undoStack = [];
+  if (session?.mode === 'online' && session.code) store.remove(roomKey(session.code)); // bilerek çıkış: oda unutulur
+  ui.leave(); // çevrimiçi süre halkası zamanlayıcısı menüde çalışmasın
+  session?.leave(); session = null; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
+  clock.cancel(); clock.resume();
+  started = false; state = null;
   // Geçmişi menü kaydına (i=0) sar: çıkış sonrası geri tuşu eski kurulum/oyun kayıtlarında dolaşmasın.
   const i = router.current?.i ?? 0;
   if (i > 0) history.go(-i); else router.go('menu', {}, { replace: true });
@@ -180,8 +162,9 @@ const pause = createPause(menu, {
 });
 registerMainScreens(menu, {
   router, getProfile, openHelp: () => ui.tutorial.openHelp(),
-  startGame: opts => { start(opts); router.go('game'); },
+  startGame: opts => { start(opts); router.go('game'); }, startOnline,
 });
+registerOnlineScreens(menu, { router, getProfile, startOnline });
 defineProfile(menu, { router });
 defineSettings(menu, { router, onSettings, tutorial: () => ui.tutorial });
 router.onChange(({ name, params, dir }) => {
@@ -192,12 +175,21 @@ router.onChange(({ name, params, dir }) => {
   else if (menu.has(name)) menu.show(name, params, dir);
   else { menu.toast('Yakında'); router.back(); }
 });
+// Derin link (?oda=KOD): profil varsa menüye gelince Koda Katıl kod dolu açılır (ilk açılışta önce profil).
+let roomLink = takeRoomLink();
+router.onChange(({ name }) => {
+  if (name !== 'menu' || !roomLink || !getProfile()) return;
+  const code = roomLink; roomLink = null;
+  router.go('join', { code });
+});
+// Yenilemeden sonra: saklı oda sunucuda yaşıyorsa doğrudan lobiye/oyuna dön (token ile aynı koltuk).
+if (!roomLink && getProfile()) restoreRoom().then(code => { if (code && router.current?.name === 'menu') router.go('lobby', { code }); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.target.closest?.('input,textarea')) router.back(); });
 // Profil yoksa ilk açılış ekranı; profil varken yenilemede eski "ilk açılış" kaydı menüye döner.
 const hs = history.state;
 router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { clock, router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { clock, router, ui, scene, act, sfx, startOnline, get state() { return state; }, get legal() { return lastLegal; }, get meta() { return lastMeta; }, get highlight() { return highlight; } };
 
 initPwa();
