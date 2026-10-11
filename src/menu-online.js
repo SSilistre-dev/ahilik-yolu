@@ -2,7 +2,7 @@
 // Saf yardımcılar dışa açık (test/menu-online.test.js); ekranlar menu.js kitiyle çizilir. Oyun içi HUD burada değil.
 import { AVATARS, AVATAR_IDS } from './data.js';
 import { store as defaultStore, roomKey } from './store.js';
-import { createNet, FATAL } from './net.js';
+import { createNet, FATAL, LAST_ROOM_KEY } from './net.js';
 import { createOnlineSession } from './session.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,7 +64,11 @@ export function joinCheck(status, body, hasToken) {
 
 // Saklı token'ı olan odalar (store `ahilik.room.<KOD>`).
 const ROOM_PREFIX = roomKey('');
-export const savedRooms = (st = defaultStore) => st.keys().filter(k => k.startsWith(ROOM_PREFIX)).map(k => k.slice(ROOM_PREFIX.length)).filter(isCode);
+export function savedRooms(st = defaultStore) {
+  const last = st.get(LAST_ROOM_KEY, null, d => typeof d === 'string');
+  const codes = st.keys().filter(k => k.startsWith(ROOM_PREFIX)).map(k => k.slice(ROOM_PREFIX.length)).filter(isCode);
+  return codes.sort((a, b) => (b === last) - (a === last)); // en son katılınan önce
+}
 
 // Açılışta: saklı odalardan sunucuda yaşayan ilkinin kodu, yoksa null. Yok olan odanın kaydı silinir; ağ hatasında kayıt kalır.
 // getRoom(code) -> { status, body } (api() ile aynı biçim).

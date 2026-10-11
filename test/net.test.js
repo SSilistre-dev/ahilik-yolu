@@ -88,8 +88,8 @@ test('net: stale/illegal kapatmaz, yalnız iletilir', () => {
   assert.deepEqual(errs, ['stale']); assert.equal(r.net.conn, 'ok');
 });
 
-test('net: expired/notFound/kicked saklı tokenı siler, replaced/full silmez', () => {
-  for (const [code, kept] of [['expired', false], ['notFound', false], ['kicked', false], ['replaced', true], ['full', true]]) {
+test('net: expired/notFound/kicked/full/started saklı tokenı siler, replaced silmez', () => {
+  for (const [code, kept] of [['expired', false], ['notFound', false], ['kicked', false], ['full', false], ['started', false], ['replaced', true]]) {
     const r = rig();
     r.store.set(roomKey('K7M2QX'), 'abc');
     r.net.connect({ name: 'A', avatar: 0 }); r.last().open();

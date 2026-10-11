@@ -109,3 +109,15 @@ test('findLiveRoom: yaşayan oda kodu döner, ölü odanın kaydı silinir, ağ 
   assert.equal(await findLiveRoom(async () => ({ status: 0, body: null }), st), null);
   assert.equal(st.get(roomKey('DEF567')), 't2', 'ağ hatasında kayıt kalır');
 });
+
+test('savedRooms: en son katılınan oda (ahilik.lastRoom) önce denenir', async () => {
+  const { createStore, roomKey } = await import('../src/store.js');
+  const { savedRooms } = await import('../src/menu-online.js');
+  const mem = new Map();
+  const st = createStore({ getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: k => mem.delete(k), key: i => [...mem.keys()][i], get length() { return mem.size; } });
+  st.set(roomKey('ABC234'), 'a'.repeat(32)); st.set(roomKey('DEF567'), 'b'.repeat(32));
+  st.set('ahilik.lastRoom', 'DEF567');
+  assert.equal(savedRooms(st)[0], 'DEF567');
+  st.set('ahilik.lastRoom', 'ABC234');
+  assert.equal(savedRooms(st)[0], 'ABC234');
+});

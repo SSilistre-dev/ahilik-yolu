@@ -6,7 +6,9 @@ export const PING_MS = 25000;
 export const BACKOFF = [500, 1000, 2000, 4000, 8000, 10000]; // sondaki değer üst sınır
 // Sunucunun bağlantıyı kapattığı hatalar: yeniden bağlanma yok.
 export const FATAL = new Set(['full', 'started', 'notFound', 'rate', 'tooBig', 'version', 'kicked', 'replaced', 'expired']);
-const DROP_TOKEN = new Set(['expired', 'notFound', 'kicked']); // oda/koltuk artık yok: saklı token işe yaramaz
+// Oda/koltuk artık yok: saklı token işe yaramaz. full/started yalnız bilinmeyen (bayat) token'a döner; geçerli token koltuğuna döner.
+const DROP_TOKEN = new Set(['expired', 'notFound', 'kicked', 'full', 'started']);
+export const LAST_ROOM_KEY = 'ahilik.lastRoom'; // en son katılınan oda: açılışta önce o denenir
 
 export function createNet({ code, WebSocket = globalThis.WebSocket, store, url, setTimer = setTimeout, clearTimer = clearTimeout }) {
   code = String(code).toUpperCase();
@@ -40,7 +42,7 @@ export function createNet({ code, WebSocket = globalThis.WebSocket, store, url, 
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (!msg || typeof msg.t !== 'string') return;
-      if (msg.t === 'welcome') { store?.set(key, msg.you.token); attempt = 0; lastError = null; setConn('ok'); }
+      if (msg.t === 'welcome') { store?.set(key, msg.you.token); store?.set(LAST_ROOM_KEY, code); attempt = 0; lastError = null; setConn('ok'); }
       else if (msg.t === 'error' && (FATAL.has(msg.code) || (msg.code === 'badMsg' && conn !== 'ok'))) { // welcome öncesi badMsg: hello reddedildi, tekrar denemek boşuna
         if (DROP_TOKEN.has(msg.code)) store?.remove(key);
         lastError = { code: msg.code, msg: msg.msg };
