@@ -29,6 +29,7 @@ let sceneReady = false;
 let prog = 0;
 let started = false;
 let botFails = 0;
+let botSeq = 0;
 
 const sfx = createSfx();
 ['pointerdown', 'touchend', 'keydown'].forEach(t => addEventListener(t, () => sfx.unlock(), { passive: true }));
@@ -58,7 +59,7 @@ readyP.then(() => { sceneReady = true; });
 function renderScene() {
   const p = state.players[state.active];
   const show = !p.bot && ['ahlak', 'close', 'move'].includes(state.phase);
-  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [] });
+  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [], viewer: state.players.findIndex(q => !q.bot) });
 }
 
 async function start(opts) {
@@ -142,7 +143,8 @@ function update(events) {
   effects(events);
   if (state.phase !== 'over' && who.bot) {
     const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
-    clock.schedule(botNext, events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot);
+    const ms = events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot, seq = ++botSeq;
+    scene.whenIdle().then(() => { if (seq === botSeq && state) clock.schedule(botNext, ms); }); // yürüyen piyon durmadan sıradaki bot aksiyonu başlamaz
   }
 }
 
@@ -193,6 +195,6 @@ const hs = history.state;
 router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { clock, router, ui, scene, act, sfx, get state() { return state; }, get highlight() { return highlight; } };
 
 initPwa();

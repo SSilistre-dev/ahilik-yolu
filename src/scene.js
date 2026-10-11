@@ -3,16 +3,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { ILKELER, CITIES, BOARD, AVATARS, neighbors } from './data.js';
+import { ILKELER, CITIES, BOARD, AVATARS } from './data.js';
+import { pawnSlot, walkTiles, viewFlip } from './path.js';
 import { MODELS, CARD_ART } from './assets.js';
 import { reducedMotion } from './store.js';
 
 const P = 1.1;                     // tile pitch
 const HALF = 3.25;                 // terrain plate half size
 const BASE_H = 0.1, CITY_H = 0.14; // tile top heights
-const ART = 0.7, ART_OFF = 0.07;   // printed art plate size and shift toward the camera
+const ART = 0.92;                  // printed art plate size (square art, shown whole, centred on the tile)
 const PULSE_MS = 33;               // goal/highlight pulse redraw interval (~30 fps)
 const IDLE_MS = 66;                // idle animation redraw interval (~15 fps)
+const MEDAL_BASE = 0.5, MEDAL_BIG = 0.74; // badge medal size (world units)
+const STEP_MS = 340, STEP_FAST_MS = 220; // one tile hop; long walks (cargo) hop faster
 const IDLE_SLEEP_MS = 5000;        // ornamental loop (pulse, flag, breathing) stops after this long without input
 const tileX = (c) => (c - 2) * P, tileZ = (r) => (r - 2) * P;
 const topOf = (t) => (t.kind === 'city' ? CITY_H : BASE_H);
@@ -79,6 +82,21 @@ function labelSprite(text) {
   s.scale.set(0.72, 0.225, 1); s.renderOrder = 10; return s;
 }
 
+// gold medal with ribbon and a big count; Sprite so it always faces the camera
+function medalTex(n) {
+  return canvasTex(192, 192, (g, w) => {
+    g.fillStyle = '#c0392b'; g.beginPath(); g.moveTo(58, 120); g.lineTo(34, 188); g.lineTo(70, 170); g.lineTo(92, 124); g.fill();
+    g.fillStyle = '#9c2a1e'; g.beginPath(); g.moveTo(134, 120); g.lineTo(158, 188); g.lineTo(122, 170); g.lineTo(100, 124); g.fill();
+    g.fillStyle = '#5a2e08'; g.beginPath(); g.arc(w / 2, 84, 80, 0, 7); g.fill();
+    g.fillStyle = '#ffd24a'; g.beginPath(); g.arc(w / 2, 84, 70, 0, 7); g.fill();
+    g.strokeStyle = '#fff0a8'; g.lineWidth = 6; g.beginPath(); g.arc(w / 2, 84, 58, 0, 7); g.stroke();
+    const t = String(n); let px = t.length > 1 ? 82 : 100;
+    g.font = `bold ${px}px sans-serif`; while (g.measureText(t).width > 100 && px > 30) { px -= 4; g.font = `bold ${px}px sans-serif`; }
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round'; g.lineWidth = 10; g.strokeStyle = '#fff6c8'; g.strokeText(t, w / 2, 88);
+    g.fillStyle = '#4a2600'; g.fillText(t, w / 2, 88);
+  });
+}
+
 // ---------- geometry helpers ----------
 function rrect(w, h, r) {
   const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
@@ -137,6 +155,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 1, far: 20 });
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.02;
   scene.add(sun, sun.target);
+  const world = new THREE.Group(); scene.add(world); let fs = 1; // board + pieces; fs = -1 while turned; turned 180 degrees when the human starts on the far side
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
 
   // ----- loading -----
@@ -188,8 +207,9 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
       add(ps, m = IDENT) { for (const { geo, mat } of ps) { if (!by.has(mat)) by.set(mat, []); by.get(mat).push(geo.clone().applyMatrix4(m)); } },
       put(key, x, y, z, s = 1, ry = 0, rx = 0) { this.add(parts(key), compose(x, y, z, s, ry, rx)); },
       build(cast, recv) {
-        for (const [mat, gs] of by) { const m = new THREE.Mesh(mergeGeometries(gs), mat); m.castShadow = cast; m.receiveShadow = recv; scene.add(m); }
-        by.clear();
+        const out = [];
+        for (const [mat, gs] of by) { const m = new THREE.Mesh(mergeGeometries(gs), mat); m.castShadow = cast; m.receiveShadow = recv; world.add(m); out.push(m); }
+        by.clear(); return out;
       },
     };
   }
@@ -206,10 +226,10 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   // ----- static world: table, terrain, tiles -----
   const statics = Batch(), lands = Batch();
   const table = new THREE.Mesh(new THREE.PlaneGeometry(70, 70).rotateX(-Math.PI / 2), lam(0xffffff, { map: woodTex() }));
-  table.position.y = -0.16; table.receiveShadow = true; scene.add(table);
+  table.position.y = -0.16; table.receiveShadow = true; world.add(table);
   const sandT = sandTex();
   const plate = new THREE.Mesh(slab(HALF * 2, 0.8, 0.16, 0.07, 0xffffff, 0xa07c4c, true).translate(0, -0.16, 0), lam(0xffffff, { map: sandT, vertexColors: true }));
-  plate.receiveShadow = true; scene.add(plate);
+  plate.receiveShadow = true; world.add(plate);
 
   const stone = 0xcbb78f, artMats = {}, artTex = {};
   for (const id in ILKELER) {
@@ -223,96 +243,72 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
     if (t.kind === 'ilke') {
       const a = new THREE.ShapeGeometry(rrect(ART, ART, 0.06), 4), pos = a.attributes.position, uv = a.attributes.uv;
       for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / ART + 0.5, pos.getY(i) / ART + 0.5);
-      a.rotateX(-Math.PI / 2); a.translate(x + ART_OFF * 0.6, top + 0.004, z + ART_OFF);
+      a.rotateX(-Math.PI / 2); a.translate(x, top + 0.004, z);
       (artGeos[t.ilke] = artGeos[t.ilke] || []).push(a);
     }
   }
-  for (const id in artGeos) { const m = new THREE.Mesh(mergeGeometries(artGeos[id]), artMats[id]); m.receiveShadow = true; scene.add(m); }
+  for (const id in artGeos) { const m = new THREE.Mesh(mergeGeometries(artGeos[id]), artMats[id]); m.receiveShadow = true; world.add(m); }
+  // art lies flat on the tile: when the board is turned 180 degrees the art is turned back so it reads upright
+  function turnArt() { for (const id in artTex) { const t = artTex[id]; t.center.set(0.5, 0.5); t.rotation = fs < 0 ? Math.PI : 0; } }
   // swap in printed art when it loads; fallback canvas stays if the file is missing
   for (const id in ILKELER) {
     jobs.push(new Promise((res) => texLoader.load(CARD_ART('ilke-' + id), (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-      artTex[id].dispose(); artTex[id] = tex; artMats[id].map = artMats[id].emissiveMap = tex; artMats[id].needsUpdate = true; res(); kick();
+      artTex[id].dispose(); artTex[id] = tex; artMats[id].map = artMats[id].emissiveMap = tex; artMats[id].needsUpdate = true; turnArt(); res(); kick();
     }, undefined, () => res())));
   }
 
   // highlight rings (one instanced mesh)
   const glow = new THREE.MeshBasicMaterial({ map: glowTex(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   const rings = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.14, 1.14).rotateX(-Math.PI / 2), glow, 25);
-  rings.frustumCulled = false; rings.renderOrder = 5; scene.add(rings);
+  rings.frustumCulled = false; rings.renderOrder = 5; world.add(rings);
 
   // ----- model-dependent world, built once loading settles -----
-  let coinS, coinG, fenceM, crateM, built = false;
+  let fenceM, crateM, built = false;
+  const medals = [], medalCache = new Map(), emph = new Set(); // emph: tiles on the route / goal / legal targets get a bigger medal
+  const medalTex_ = (n) => { n = Math.min(n, 99); if (!medalCache.has(n)) medalCache.set(n, medalTex(n)); return medalCache.get(n); };
   const cityLabels = [], pawns = [];
-  const ILKE_PROP_SPOT = { x: -0.32, z: -0.32 };
-  function buildWorld() {
-    const rnd = mulberry(11);
-    // ilke props at the back-left corner of every ilke tile
-    for (const t of BOARD) {
-      if (t.kind !== 'ilke') continue;
-      const x = tileX(t.c) + ILKE_PROP_SPOT.x, z = tileZ(t.r) + ILKE_PROP_SPOT.z, y = BASE_H, ry = (t.idx % 3 - 1) * 0.45;
-      const loc = (px, pz) => [x + px, y, z + pz];
-      switch (t.ilke) {
-        case 'comert': statics.put('chest', ...loc(0, 0), 1, ry); statics.put('coinGold', ...loc(0.19, 0.08), 0.8); statics.put('coinGold', x + 0.19, y + 0.032, z + 0.08, 0.8, 0.5); break;
-        case 'bilgili': statics.put('journal', ...loc(0.02, 0.02), 1, ry); break;
-        case 'disiplinli': statics.put('hourglass', ...loc(0, 0), 1, ry); break;
-        case 'durust': statics.put('lantern', ...loc(0, 0), 1, ry); break;
-        case 'merhametli': statics.put('well', ...loc(0, 0), 1, ry); break;
-        case 'adaletli': { // procedural scales
-          const ps = [piece(G.cyl(0.075, 0.085, 0.03), 0x7a5a3a, 0, 0.015, 0), piece(G.cyl(0.014, 0.018, 0.27), 0xe0b23c, 0, 0.165, 0),
-            piece(G.box(0.3, 0.024, 0.024), 0xe0b23c, 0, 0.29, 0), piece(G.sph(0.02), 0xe0b23c, 0, 0.31, 0)];
-          for (const s of [-1, 1]) ps.push(piece(G.cyl(0.07, 0.055, 0.016), 0xd9d2c0, s * 0.14, 0.15, 0), piece(G.cyl(0.003, 0.003, 0.13), 0x8a7a50, s * 0.14, 0.22, 0));
-          statics.add(ps, compose(x, y, z, 1, ry)); break;
-        }
-        case 'tokgozlu': { // plate with bread + sack
-          const ps = [piece(G.cyl(0.1, 0.085, 0.018), 0xe8dcc0, 0, 0.009, 0), piece(G.sph(0.07), 0xc98a3c, -0.025, 0.04, 0.0, { s: [1.1, 0.6, 0.8], ry: 0.4 }), piece(G.sph(0.05), 0xb8782e, 0.04, 0.036, 0.03, { s: [1, 0.6, 0.8], ry: -0.5 })];
-          statics.add(ps, compose(x, y, z, 1, ry)); statics.put('sack', x + 0.2, y, z + 0.1, 1, 0.5); break;
-        }
-      }
-    }
-    // cities
+  // landmarks are built per board orientation: the far half of the tile (away from the camera) is theirs, pawns stand in front
+  let cityMeshes = [];
+  function buildCities() {
+    for (const m of cityMeshes) { world.remove(m); m.geometry.dispose(); }
     for (const t of BOARD.filter((b) => b.kind === 'city')) {
-      const x = tileX(t.c), z = tileZ(t.r), y = CITY_H, c = t.city;
-      if (c === 'ankara') {
-        // castle on a rocky mound: tall keep behind, gate towers + gate wall in front
-        lands.add([piece(G.cyl(0.42, 0.5, 0.1, 8), 0x8d7a5c, 0, 0.05, 0, { ry: 0.2 }), piece(G.cyl(0.33, 0.4, 0.1, 7), 0xa08c6a, 0, 0.15, 0, { ry: 0.5 })], compose(x, y - 0.02, z));
+      const x = tileX(t.c), z = tileZ(t.r) - 0.16 * fs, y = CITY_H, c = t.city; // landmark sits on the far half of its tile, pawns stand in front
+      if (c === 'ankara') { // castle on a rocky mound: tall keep, two side towers
+        lands.add([piece(G.cyl(0.38, 0.46, 0.1, 8), 0x8d7a5c, 0, 0.05, 0, { ry: 0.2 }), piece(G.cyl(0.3, 0.37, 0.1, 7), 0xa08c6a, 0, 0.15, 0, { ry: 0.5 })], compose(x, y - 0.02, z));
         const tw = (px, pz, n, s) => { let h = 0.23; lands.put('towerBase', x + px, y + h, z + pz, s); h += s; if (n > 1) { lands.put('towerMid', x + px, y + h, z + pz, s); h += s; } lands.put('towerRoof', x + px, y + h, z + pz, s); };
-        tw(0, -0.14, 2, 0.36); tw(-0.3, 0.2, 1, 0.27); tw(0.3, 0.2, 1, 0.27);
-        lands.put('wall', x, y + 0.23, z + 0.2, [0.4, 0.22, 0.26], 0); lands.put('gate', x, y + 0.23, z + 0.2, [0.7, 0.45, 0.45], Math.PI / 2);
-        lands.put('wall', x - 0.15, y + 0.23, z + 0.03, [0.4, 0.22, 0.26], 0.9); lands.put('wall', x + 0.15, y + 0.23, z + 0.03, [0.4, 0.22, 0.26], -0.9);
-      } else if (c === 'kirsehir') { // turbe: hexagonal tower + blue cone roof, tent beside it
-        lands.put('hexBase', x - 0.05, y, z - 0.08, 0.58); lands.put('hexRoof', x - 0.05, y + 1.31 * 0.58, z - 0.08, 0.58);
-        statics.put('tent', x + 0.3, y, z + 0.3, 0.8, -0.5); statics.put('palmShort', x - 0.36, y, z + 0.3, 0.8);
-      } else if (c === 'konya') { // dome (turquoise) + minaret + small house
+        tw(0, 0, 2, 0.36); tw(-0.3, 0, 1, 0.27); tw(0.3, 0, 1, 0.27);
+      } else if (c === 'kirsehir') { // turbe: hexagonal tower + blue cone roof
+        lands.put('hexBase', x, y, z, 0.58); lands.put('hexRoof', x, y + 1.31 * 0.58, z, 0.58);
+      } else if (c === 'konya') { // dome (turquoise) + minaret
         const ps = [piece(G.cyl(0.26, 0.28, 0.06), 0xe6d6aa, 0, 0.03, 0), piece(G.cyl(0.21, 0.21, 0.24), 0xf1e6c8, 0, 0.18, 0), piece(G.dome(0.24), 0x23a6a0, 0, 0.3, 0),
           piece(G.cyl(0.012, 0.012, 0.12), 0xe0b23c, 0, 0.6, 0), piece(G.sph(0.025), 0xe0b23c, 0, 0.67, 0),
-          piece(G.cyl(0.04, 0.055, 0.75), 0xf1e6c8, -0.34, 0.375, 0.14), piece(G.cyl(0.075, 0.075, 0.03), 0xd9c9a0, -0.34, 0.58, 0.14), piece(G.cone(0.06, 0.22), 0x23a6a0, -0.34, 0.86, 0.14)];
-        lands.add(ps, compose(x + 0.08, y, z - 0.06));
-        statics.put('house', x + 0.3, y, z + 0.32, 0.7, 0.3);
-      } else { // kumbet: tall hexagonal tower with cone roof, two market stalls in front
-        lands.put('hexBase', x, y, z - 0.14, 0.5); lands.put('hexRoof', x, y + 1.31 * 0.5, z - 0.14, 0.5);
-        statics.put('stallRed', x - 0.28, y, z + 0.3, 0.8, 0.2); statics.put('stallGreen', x + 0.28, y, z + 0.3, 0.8, -0.2);
+          piece(G.cyl(0.04, 0.055, 0.75), 0xf1e6c8, -0.34, 0.375, 0), piece(G.cyl(0.075, 0.075, 0.03), 0xd9c9a0, -0.34, 0.58, 0), piece(G.cone(0.06, 0.22), 0x23a6a0, -0.34, 0.86, 0)];
+        lands.add(ps, compose(x + 0.1, y, z));
+      } else { // kumbet: tall hexagonal tower with cone roof
+        lands.put('hexBase', x, y, z, 0.5); lands.put('hexRoof', x, y + 1.31 * 0.5, z, 0.5);
       }
     }
-    // desert dressing around the plate edge
-    const kinds = ['palmTall', 'palmShort', 'cactus', 'rockA', 'rockB', 'rockC', 'rockD', 'grass', 'grass', 'tree', 'trees', 'palmTall'];
-    const low = ['cactus', 'rockA', 'rockB', 'rockC', 'rockD', 'grass', 'grass', 'grass'];
-    for (let i = 0; i < 44; i++) {
-      const side = Math.floor(rnd() * 4), t = (rnd() * 2 - 1) * 3.0, d = 2.98 + rnd() * 0.12;
-      const pool = side === 1 ? low : kinds, k = pool[Math.floor(rnd() * pool.length)]; // front edge stays low so tiles stay readable
-      const [px, pz] = side < 2 ? [t, d * (side ? 1 : -1)] : [d * (side === 2 ? 1 : -1), t];
-      statics.put(k, px, 0, pz, 0.85 + rnd() * 0.4, rnd() * 6.28);
+    cityMeshes = lands.build(true, true);
+  }
+  function buildWorld() {
+    const rnd = mulberry(11);
+    // a few props outside the plate, left and right only: tile faces and pawns stay clear
+    const kinds = ['palmTall', 'rockA', 'cactus', 'palmShort', 'rockC', 'rockD'];
+    for (let i = 0; i < 8; i++) {
+      const side = i % 2 ? 1 : -1, k = kinds[i % kinds.length];
+      statics.put(k, side * (3.55 + rnd() * 0.15), -0.16, (Math.floor(i / 2) - 1.5) * 1.5 + rnd() * 0.3, 0.9 + rnd() * 0.3, rnd() * 6.28);
     }
-    statics.put('wheelbarrow', 0.9, 0, 3.0, 1, 0.4); statics.put('crate', 1.3, 0, 3.02, 1, 0.2); statics.put('barrel', -1.2, 0, 3.02, 1, 0); statics.put('sack', -0.9, 0, 3.05, 1, 1); statics.put('cart', -2.6, 0, 3.0, 1.2, 1.7);
-    statics.build(false, true); lands.build(true, true);
+    statics.build(false, true); buildCities();
 
     for (const [id, c] of Object.entries(CITIES)) {
       const t = BOARD[c.tile], s = labelSprite(c.name);
-      s.position.set(tileX(t.c), { ankara: 1.5, kirsehir: 1.12, konya: 1.15, kayseri: 1.05 }[id], tileZ(t.r)); scene.add(s); cityLabels.push(s);
+      s.position.set(tileX(t.c), { ankara: 1.5, kirsehir: 1.12, konya: 1.15, kayseri: 1.05 }[id], tileZ(t.r)); world.add(s); cityLabels.push(s);
     }
     // instanced coins + barricade pieces
-    const inst = (key, n) => { const p = parts(key)[0], m = new THREE.InstancedMesh(p.geo, p.mat, n); m.frustumCulled = false; m.count = 0; scene.add(m); return m; };
-    coinS = inst('coinSilver', 25 * 5); coinG = inst('coinGold', 25 * 5); fenceM = inst('fence', 25 * 6); crateM = inst('crate', 25);
+    const inst = (key, n) => { const p = parts(key)[0], m = new THREE.InstancedMesh(p.geo, p.mat, n); m.frustumCulled = false; m.count = 0; world.add(m); return m; };
+    fenceM = inst('fence', 25 * 6); crateM = inst('crate', 25);
+    for (const t of BOARD) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false, transparent: true })); m.center.set(0.5, 0.05); m.renderOrder = 9; m.visible = false; world.add(m); medals[t.idx] = m; }
     built = true;
   }
 
@@ -322,9 +318,14 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   function makePawn(i, color, avatar) {
     const key = pawnKey(i, avatar);
     const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS[key], g = loaded[key], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
-    const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.2, 0.22, 0.05, 24), true), color), paint(norm(new THREE.TorusGeometry(0.205, 0.014, 6, 28).rotateX(Math.PI / 2).translate(0, 0.025, 0), true), 0xfff4d6)]), procMat);
-    disc.receiveShadow = true; disc.position.y = 0.025; body.position.y = 0.04;
-    const pw = { key, root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false, live: true };
+    const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.25, 0.27, 0.06, 28), true), color), paint(norm(new THREE.TorusGeometry(0.26, 0.022, 6, 32).rotateX(Math.PI / 2).translate(0, 0.03, 0), true), 0xfff4d6)]), procMat);
+    disc.receiveShadow = true; disc.position.y = 0.03; body.position.y = 0.05;
+    // active-turn highlight: pulsing gold ring on the ground + bobbing arrow over the head
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.31, 0.4, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false }));
+    ring.position.y = 0.075; ring.visible = false;
+    const mark = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.24, 4).rotateX(Math.PI).translate(0, 0.12, 0), new THREE.MeshBasicMaterial({ color: 0xffd23a, toneMapped: false }));
+    mark.position.y = 1.0; mark.visible = false;
+    const pw = { key, root, body, ring, mark, route: null, tile: -1, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false, live: true };
     const characterOk = g && (() => {
       try {
         const skins = []; model.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
@@ -350,7 +351,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
       const m = lam(color), cone = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 14), m), ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 10), m);
       cone.position.y = 0.2; ball.position.y = 0.47; cone.castShadow = ball.castShadow = true; body.add(cone, ball);
     }
-    root.add(disc, body); scene.add(root); return pw;
+    root.add(disc, body, ring, mark); world.add(root); return pw;
   }
   const setWalk = (pw, on) => {
     if (!pw.walk || !pw.idle) return;
@@ -360,7 +361,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   };
   // Frees what a pawn owns: its geometries, skeleton bone texture, own materials. Never the shared procMat or the glTF texture.
   function disposePawn(pw) {
-    scene.remove(pw.root);
+    world.remove(pw.root);
     if (pw.mixer) { pw.mixer.stopAllAction(); pw.mixer.uncacheRoot(pw.mixer.getRoot()); pw.mixer = null; }
     pw.root.traverse((o) => {
       if (o.geometry) o.geometry.dispose();
@@ -368,16 +369,16 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
       for (const m of [].concat(o.material || [])) if (m !== procMat) m.dispose();
     });
   }
+  // pawn stand point: front of its tile (the printed art stays visible), small slots when several pawns share a tile
   function pawnTarget(state, p) {
-    const t = state.tiles[state.players[p].pos], n = t.occupants.length, i = Math.max(0, t.occupants.indexOf(p));
-    const bx = tileX(t.c) + ART_OFF * 0.6, bz = tileZ(t.r) + ART_OFF + (t.kind === 'city' ? 0.06 : 0);
-    const a = (2 * Math.PI * i) / n - Math.PI / 2 + 0.4, r = n > 1 ? 0.2 : 0;
-    return V3(bx + Math.cos(a) * r, topOf(t), bz + Math.sin(a) * r);
+    const t = state.tiles[state.players[p].pos], n = t.occupants.length, sl = pawnSlot(Math.max(0, t.occupants.indexOf(p)), n);
+    return V3(tileX(t.c) + sl.x * fs, topOf(t), tileZ(t.r) + sl.d * fs);
   }
+  const pawnScale = (n) => (n <= 1 ? 1.25 : n === 2 ? 1.05 : n <= 4 ? 0.85 : 0.7);
 
   // ----- goal flag + path trail -----
   const GOLD = 0xffb000;
-  const goalG = new THREE.Group(); goalG.visible = false; scene.add(goalG);
+  const goalG = new THREE.Group(); goalG.visible = false; world.add(goalG);
   const POLE_H = 1.4, clothGeo = new THREE.PlaneGeometry(0.62, 0.38, 8, 2).translate(0.31, 0, 0), clothBase = clothGeo.attributes.position.array.slice();
   const flagMat = new THREE.MeshBasicMaterial({ color: GOLD, side: THREE.DoubleSide, toneMapped: false });
   const cloth = new THREE.Mesh(clothGeo, flagMat); cloth.position.set(0.02, POLE_H - 0.21, 0);
@@ -386,7 +387,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   const ringTex = canvasTex(128, 128, (g, s) => { g.shadowColor = '#ffb000'; g.shadowBlur = 10; g.strokeStyle = '#f09a00'; g.lineWidth = 9; g.beginPath(); g.arc(s / 2, s / 2, 44, 0, 7); g.stroke(); });
   const goalRing = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 1.3).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false }));
   goalRing.position.y = 0.04; goalRing.renderOrder = 4;
-  const flagBase = new THREE.Group(); flagBase.position.set(0, 0.0, 0.42); flagBase.add(pole, cloth, knob); goalG.add(flagBase, goalRing);
+  const flagBase = new THREE.Group(); flagBase.add(pole, cloth, knob); goalG.add(flagBase, goalRing);
   let goalOn = false;
   function animGoal(now, still) {
     if (still) now = 0;
@@ -400,35 +401,33 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   function setGoal(idx) {
     goalOn = idx != null && idx >= 0 && idx < 25;
     goalG.visible = goalOn;
-    if (goalOn) { const t = BOARD[idx]; goalG.position.set(tileX(t.c), CITY_H, tileZ(t.r)); }
+    if (goalOn) { const t = BOARD[idx]; goalG.position.set(tileX(t.c), CITY_H, tileZ(t.r)); flagBase.position.set(-0.34 * fs, flagBase.position.y, -0.34 * fs); flagBase.scale.x = fs; }
   }
-  // dotted trail: pawn tile -> path tiles -> goal city, one InstancedMesh of flat discs
-  const MAX_DOTS = 120, DOT_STEP = 0.32;
-  const dotGeo = mergeGeometries([paint(new THREE.CircleGeometry(0.1, 14).rotateX(-Math.PI / 2), 0x6b3a0c), paint(new THREE.CircleGeometry(0.068, 14).rotateX(-Math.PI / 2).translate(0, 0.003, 0), 0xffb52e)]);
-  const trail = new THREE.InstancedMesh(dotGeo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.92, depthWrite: false }), MAX_DOTS);
-  trail.frustumCulled = false; trail.count = 0; trail.renderOrder = 3; scene.add(trail);
-  let trailKey = '';
+  // route: pawn tile -> path tiles -> goal city. Every route tile glows; ribbons with direction arrows link them.
+  const MAX_SEG = 12, ROUTE_Y = 0.02;
+  const tri = (w, h, color, y) => paint(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-w, -h), new THREE.Vector2(w, -h), new THREE.Vector2(0, h)])).rotateX(Math.PI / 2).translate(0, y, 0), color);
+  const routeMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide });
+  const ribbonGeo = mergeGeometries([paint(new THREE.PlaneGeometry(0.16, 1).rotateX(-Math.PI / 2), 0x5a2e08), paint(new THREE.PlaneGeometry(0.1, 1).rotateX(-Math.PI / 2).translate(0, 0.002, 0), 0xffb52e)]);
+  const arrowGeo = mergeGeometries([tri(0.2, 0.19, 0x5a2e08, 0.004), tri(0.13, 0.12, 0xfff0a0, 0.006)]);
+  const routeMesh = new THREE.Mesh(new THREE.BufferGeometry(), routeMat); // rebuilt only when the route changes: one draw call
+  routeMesh.frustumCulled = false; routeMesh.renderOrder = 4; routeMesh.visible = false; world.add(routeMesh);
+  const routeGlow = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.14, 1.14).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: glowTex(), color: 0xff9a1f, opacity: 0.6, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 25);
+  routeGlow.frustumCulled = false; routeGlow.renderOrder = 4; world.add(routeGlow);
+  let trailKey = '', routeSet = new Set();
   function setPath(state, path, goal) {
-    const pts = (path || []).slice();
+    const pts = path && path.length || goal != null ? [state.players[state.active].pos, ...(path || [])] : [];
     if (pts.length && goal != null && pts[pts.length - 1] !== goal) pts.push(goal);
-    let from = null;
-    if (pts.length) { // trail starts at the pawn standing next to the first path tile (active player preferred)
-      const nb = neighbors(pts[0]), order = [state.active, ...state.players.map((_, i) => i)];
-      for (const p of order) if (state.players[p] && nb.includes(state.players[p].pos)) { from = state.players[p].pos; break; }
-      if (from !== null) pts.unshift(from);
-    }
     const key = pts.join(',');
+    routeSet = new Set(pts.slice(1)); routeGlow.visible = routeSet.size > 0;
     if (key === trailKey) return;
-    trailKey = key; let n = 0;
-    const at = (i) => { const t = BOARD[i]; return [tileX(t.c), tileZ(t.r), topOf(t) + 0.012]; };
-    for (let i = 0; i + 1 < pts.length && n < MAX_DOTS; i++) {
-      const [x0, z0, y0] = at(pts[i]), [x1, z1, y1] = at(pts[i + 1]), len = Math.hypot(x1 - x0, z1 - z0), steps = Math.max(1, Math.round(len / DOT_STEP));
-      for (let k = i ? 1 : 0; k <= steps && n < MAX_DOTS; k++) {
-        const u = k / steps, big = k === steps ? 1.5 : 1; // tile-centre dots slightly bigger
-        M.compose(V3(x0 + (x1 - x0) * u, y0 + (y1 - y0) * u, z0 + (z1 - z0) * u), Q.identity(), V3(big, 1, big)); trail.setMatrixAt(n++, M);
-      }
+    trailKey = key;
+    const at = (i) => { const t = BOARD[i]; return V3(tileX(t.c), topOf(t) + ROUTE_Y, tileZ(t.r)); }, gs = [];
+    for (let i = 0; i + 1 < pts.length && i < MAX_SEG; i++) {
+      const a = at(pts[i]), b = at(pts[i + 1]), len = Math.hypot(b.x - a.x, b.z - a.z), mid = a.clone().add(b).multiplyScalar(0.5), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.atan2(b.x - a.x, b.z - a.z), 0));
+      gs.push(ribbonGeo.clone().applyMatrix4(new THREE.Matrix4().compose(mid, q, V3(1, 1, Math.max(0.2, len - 0.5)))), arrowGeo.clone().applyMatrix4(new THREE.Matrix4().compose(mid, q, V3(1, 1, 1))));
     }
-    trail.count = n; trail.instanceMatrix.needsUpdate = true;
+    routeMesh.geometry.dispose(); routeMesh.geometry = gs.length ? mergeGeometries(gs) : new THREE.BufferGeometry(); routeMesh.visible = gs.length > 0;
+    routeGlow.visible = routeSet.size > 0;
   }
 
   // ----- camera: always frames the whole board inside the free area between UI insets -----
@@ -486,7 +485,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   const yawBusy = () => pawns.some((p) => Math.abs(wrap(p.yawT - p.yaw)) > 0.01);
   // per-tile dynamic state
-  const coins = BOARD.map(() => ({ s: 0, g: 0, pop: 1 })), closedU = BOARD.map(() => 0), closedWant = BOARD.map(() => false);
+  const coins = BOARD.map(() => ({ n: 0, pop: 1 })), closedU = BOARD.map(() => 0), closedWant = BOARD.map(() => false);
   let hl = [];
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion();
   function layout(now, still) {
@@ -497,12 +496,22 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
       rings.setMatrixAt(i, M);
     }
     rings.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < 25; i++) {
+      const on = routeSet.has(i), t = BOARD[i], k = on && !still ? 0.96 + 0.04 * Math.sin(now / 300) : 1;
+      M.compose(V3(tileX(t.c), topOf(t) + 0.02, tileZ(t.r)), Q.identity(), on ? V3(k, 1, k) : V3(0, 0, 0)); routeGlow.setMatrixAt(i, M);
+    }
+    routeGlow.instanceMatrix.needsUpdate = true;
     if (!built) return;
-    let ns = 0, ng = 0, nf = 0, nc = 0;
+    let nf = 0, nc = 0;
     for (const t of BOARD) {
       const x = tileX(t.c), z = tileZ(t.r), top = topOf(t), c = coins[t.idx];
-      for (let k = 0; k < c.s; k++) { M.compose(V3(x + 0.36, top + k * 0.04, z - 0.36), Q.identity(), V3(c.pop, c.pop, c.pop)); coinS.setMatrixAt(ns++, M); }
-      for (let k = 0; k < c.g; k++) { M.compose(V3(x + 0.17, top + k * 0.04, z - 0.4), Q.identity(), V3(c.pop, c.pop, c.pop)); coinG.setMatrixAt(ng++, M); }
+      const m = medals[t.idx];
+      m.visible = c.n > 0;
+      if (c.n > 0) {
+        if (m.userData.n !== c.n) { m.userData.n = c.n; m.material.map = medalTex_(c.n); m.material.needsUpdate = true; }
+        const e = emph.has(t.idx), k = (e ? MEDAL_BIG : MEDAL_BASE) * c.pop * (e && !still ? 1 + 0.06 * Math.sin(now / 260) : 1);
+        m.scale.set(k, k, 1); m.position.set(x + 0.28 * fs, top + 0.03, z - 0.28 * fs);
+      }
       const u = closedU[t.idx];
       if (u > 0) {
         const drop = (1 - u) * 0.5, sc = V3(u, u, u);
@@ -511,24 +520,26 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
         M.compose(V3(x, top + drop + 0.06, z), Q.setFromEuler(new THREE.Euler(0, 0.4, 0)), V3(u * 0.6, u * 0.6, u * 0.6)); crateM.setMatrixAt(nc++, M);
       }
     }
-    coinS.count = ns; coinG.count = ng; fenceM.count = nf; crateM.count = nc;
-    for (const m of [coinS, coinG, fenceM, crateM]) m.instanceMatrix.needsUpdate = true;
+    fenceM.count = nf; crateM.count = nc;
+    for (const m of [fenceM, crateM]) m.instanceMatrix.needsUpdate = true;
   }
   function schedule(wait) { if (!raf && !timer) timer = setTimeout(() => { timer = 0; kick(); }, wait); }
   function frame(now) {
     raf = 0;
     if (disposed || lost) return;
     const busy = anims.size > 0 || yawBusy(), act = pawns[activeIdx];
-    const ornament = !calm && (pulse || goalOn || !!(act && act.mixer));
+    const ornament = !calm && (pulse || goalOn || !!act);
     const asleep = !busy && ornament && performance.now() - lastActivity > IDLE_SLEEP_MS;
     const wait = (pulse || goalOn ? PULSE_MS : IDLE_MS) - (now - lastT);
     if (!busy && !asleep && wait > 0) { schedule(wait); return; }
     const dt = Math.min(0.1, Math.max(0, (now - lastT) / 1000)); lastT = now;
     const still = calm || asleep; // static pose: no pulse, no flag wave
     for (const [k, a] of anims) { const u = Math.min(1, Math.max(0, (now - a.t0) / a.dur)); a.fn(u); if (u >= 1) anims.delete(k); }
+    flushIdle();
     let moved = shadowDirty || anims.size > 0;
     pawns.forEach((p, i) => {
       p.yaw += wrap(p.yawT - p.yaw) * Math.min(1, dt * 14); p.body.rotation.y = p.yaw;
+      if (p.ring.visible) { p.ring.scale.setScalar(still ? 1 : 1 + 0.1 * Math.sin(now / 240)); p.mark.position.y = still ? 1.0 : 1.0 + 0.07 * Math.sin(now / 210); p.mark.rotation.y = still ? 0 : now / 600; }
       if (!p.mixer) return;
       const walking = anims.has('p' + i), run = walking || (i === activeIdx && !still);
       if (run) { p.mixer.update(dt); p.live = moved = true; }
@@ -550,39 +561,64 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
 
   // ----- state sync -----
   let first = true, pending = null, seedSeen = null;
-  function hop(pw, i, to) {
-    if (calm) { anims.delete('p' + i); pw.root.position.copy(to); pw.target.copy(to); pw.yaw = pw.yawT = 0; return; }
-    const from = pw.root.position.clone(), d = from.distanceTo(to);
-    const dur = d < 0.5 ? 220 : d < 1.8 ? 400 : Math.min(900, 400 + d * 120), h = d < 0.5 ? 0.03 : d < 1.8 ? 0.14 : Math.min(0.8, 0.3 + d * 0.18), walk = d >= 0.5;
-    if (d > 0.3) pw.yawT = Math.atan2(to.x - from.x, to.z - from.z);
-    if (walk) setWalk(pw, true);
-    pw.target.copy(to);
-    anim('p' + i, dur, (u) => {
-      const e = u * u * (3 - 2 * u); pw.root.position.lerpVectors(from, to, e); pw.root.position.y += Math.sin(Math.PI * u) * h;
-      if (u >= 1) { pw.root.position.copy(to); pw.yawT = 0; if (walk) setWalk(pw, false); }
+  // Pawns never teleport: a move walks tile by tile (cargo flights too), each tile one hop. Back-to-back moves extend the queued route.
+  const rest = () => (fs < 0 ? Math.PI : 0); // idle facing: toward the camera
+  function place(pw, to, tile, n) {
+    anims.delete('p' + pw.i); pw.way = null; setWalk(pw, false);
+    pw.root.position.copy(to); pw.target.copy(to); pw.tile = tile; pw.yaw = pw.yawT = rest(); pw.root.scale.setScalar(pawnScale(n));
+  }
+  function walkTo(pw, i, tile, to) {
+    const tiles = walkTiles(pw.tile, tile);
+    pw.tile = tile; pw.target.copy(to);
+    if (calm) { anims.delete('p' + i); pw.way = null; pw.root.position.copy(to); pw.yaw = pw.yawT = rest(); return; }
+    const mid = tiles.slice(0, -1).map((t) => { const b = BOARD[t], sl = pawnSlot(0, 1); return V3(tileX(b.c) + sl.x * fs, topOf(b), tileZ(b.r) + sl.d * fs); });
+    const way = [...(pw.way ? pw.way.slice(Math.max(0, pw.segIdx)) : []), ...mid, to.clone()];
+    const start = pw.root.position.clone(), ms = way.length > 1 ? STEP_FAST_MS : start.distanceTo(way[0]) < 0.5 ? 200 : STEP_MS;
+    pw.way = way; pw.segIdx = -1; setWalk(pw, way.length > 1 || start.distanceTo(way[0]) >= 0.5);
+    anim('p' + i, ms * way.length, (u) => {
+      const n = way.length, tt = Math.min(n - 1e-6, u * n), k = Math.floor(tt), lu = tt - k, a = k ? way[k - 1] : start, b = way[k], e = lu * lu * (3 - 2 * lu), d = a.distanceTo(b);
+      if (pw.segIdx !== k) { pw.segIdx = k; if (d > 0.3) pw.yawT = Math.atan2(b.x - a.x, b.z - a.z); }
+      pw.root.position.lerpVectors(a, b, e); pw.root.position.y += Math.sin(Math.PI * lu) * (d < 0.5 ? 0.03 : 0.16);
+      if (u >= 1) { pw.root.position.copy(way[n - 1]); pw.yawT = rest(); pw.way = null; setWalk(pw, false); }
     });
   }
+  // resolves once every pawn stands still (calm / hidden tab / maxMs: immediately or after the cap, so a stalled frame loop never freezes the game)
+  const idleWaiters = [];
+  const anyWalking = () => pawns.some((_, i) => anims.has('p' + i));
+  function whenIdle(maxMs = 3000) {
+    if (calm || disposed || lost || document.hidden || !anyWalking()) return Promise.resolve();
+    return new Promise((res) => { const w = { res, t: setTimeout(() => { idleWaiters.splice(idleWaiters.indexOf(w), 1); res(); }, maxMs) }; idleWaiters.push(w); });
+  }
+  const flushIdle = () => { if (idleWaiters.length && !anyWalking()) for (const w of idleWaiters.splice(0)) { clearTimeout(w.t); w.res(); } };
+  // the human's start side goes to the bottom of the screen: the board turns 180 degrees when it starts on the far rows
+  function setView(state, viewer) {
+    const nfs = viewFlip(state.players[viewer]?.pos) ? -1 : 1;
+    if (nfs !== fs) { fs = nfs; world.rotation.y = fs < 0 ? Math.PI : 0; world.updateMatrixWorld(true); if (built) { buildCities(); shadowDirty = true; } }
+    turnArt();
+  }
   let lastRender = null;
-  function render(state, { highlight = [], goal = null, path = [] } = {}) { // any `focus` option is ignored: camera always frames the board
-    lastRender = [state, { highlight, goal, path }]; activeIdx = state.active; shadowDirty = true;
-    if (!built) { pending = [state, { highlight, goal, path }]; hl = highlight; pulse = highlight.length > 0; wake(); return; }
+  function render(state, { highlight = [], goal = null, path = [], viewer = null } = {}) { // any `focus` option is ignored: camera always frames the board
+    lastRender = [state, { highlight, goal, path, viewer }]; activeIdx = state.active; shadowDirty = true;
+    if (!built) { pending = [state, { highlight, goal, path, viewer }]; hl = highlight; pulse = highlight.length > 0; wake(); return; }
     const fresh = state.seed !== seedSeen; seedSeen = state.seed; // new game: snap, no animations
-    if (fresh) { first = true; anims.clear(); }
+    if (fresh) { first = true; anims.clear(); setView(state, viewer); }
+    emph.clear(); for (const i of [...highlight, ...(path || []), ...(goal != null ? [goal] : [])]) emph.add(i);
     setGoal(goal); setPath(state, path, goal);
     state.players.forEach((pl, i) => {
-      const to = pawnTarget(state, i);
+      const to = pawnTarget(state, i), n = state.tiles[pl.pos].occupants.length;
       let pw = pawns[i];
       if (pw && fresh && pw.key !== pawnKey(i, pl.avatar)) { disposePawn(pw); pw = pawns[i] = null; } // yeni oyunda karakter değiştiyse model yenilenir
-      if (!pw) { pw = pawns[i] = makePawn(i, pl.color, pl.avatar); pw.root.position.copy(to); pw.target.copy(to); }
-      else if (fresh) { setWalk(pw, false); pw.yaw = pw.yawT = 0; pw.root.position.copy(to); pw.target.copy(to); }
-      else if (!pw.target.equals(to)) hop(pw, i, to);
+      if (!pw) { pw = pawns[i] = makePawn(i, pl.color, pl.avatar); pw.i = i; place(pw, to, pl.pos, n); }
+      else if (fresh) place(pw, to, pl.pos, n);
+      else if (pw.tile !== pl.pos || !pw.target.equals(to)) walkTo(pw, i, pl.pos, to);
+      pw.root.scale.setScalar(pawnScale(n)); pw.ring.visible = pw.mark.visible = i === state.active;
     });
     while (pawns.length > state.players.length) disposePawn(pawns.pop());
 
     for (const t of state.tiles) {
-      const c = coins[t.idx], s = Math.min(4, t.badges % 5), g = Math.min(5, Math.floor(t.badges / 5));
-      if (s !== c.s || g !== c.g) {
-        c.s = s; c.g = g;
+      const c = coins[t.idx];
+      if (t.badges !== c.n) {
+        c.n = t.badges;
         if (!first && !calm) anim('b' + t.idx, 320, (u) => { c.pop = 1 + 0.5 * Math.sin(Math.PI * u); });
       }
       if (t.closed !== closedWant[t.idx]) {
@@ -616,11 +652,11 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
     const scr = (v) => { const p = v.clone().project(camera); return [(p.x + 1) / 2 * r.width, (1 - p.y) / 2 * r.height]; };
     let best = null, bd = 1e9;
     const probe = (v, rad, idx) => { const [px, py] = scr(v), d = Math.hypot(px - sx, py - sy); if (d < rad && d < bd) { bd = d; best = idx; } };
-    pawns.forEach((p) => { const idx = tileAt(p.target.x, p.target.z); if (idx >= 0) probe(p.root.position.clone().add(V3(0, 0.3, 0)), 24, idx); });
-    for (const c of Object.values(CITIES)) { const t = BOARD[c.tile]; probe(V3(tileX(t.c), 0.5, tileZ(t.r)), 30, c.tile); }
+    pawns.forEach((p) => { const idx = tileAt(p.target.x, p.target.z); if (idx >= 0) probe(world.localToWorld(p.root.position.clone().add(V3(0, 0.3, 0))), 24, idx); });
+    for (const c of Object.values(CITIES)) { const t = BOARD[c.tile]; probe(world.localToWorld(V3(tileX(t.c), 0.5, tileZ(t.r))), 30, c.tile); }
     if (best === null) {
       ndc.set((sx / r.width) * 2 - 1, -(sy / r.height) * 2 + 1); ray.setFromCamera(ndc, camera);
-      if (ray.ray.intersectPlane(plane, hitP)) { const i = tileAt(hitP.x, hitP.z); if (i >= 0) best = i; }
+      if (ray.ray.intersectPlane(plane, hitP)) { world.worldToLocal(hitP); const i = tileAt(hitP.x, hitP.z); if (i >= 0) best = i; }
     }
     if (best !== null) onTileTap(best);
   };
@@ -633,7 +669,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
 
   function projectTile(idx) {
     const t = BOARD[idx], r = canvas.getBoundingClientRect(), v = V3(tileX(t.c), topOf(t), tileZ(t.r));
-    camera.updateMatrixWorld(); v.project(camera);
+    world.localToWorld(v); camera.updateMatrixWorld(); v.project(camera);
     return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
   }
 
@@ -657,7 +693,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   canvas.addEventListener('webglcontextlost', onLost); canvas.addEventListener('webglcontextrestored', onRestored);
 
   const ready = Promise.all(jobs).then(() => {
-    try { buildWorld(); } catch (e) { console.error('buildWorld failed', e); }
+    try { if (pending) setView(pending[0], pending[1].viewer); buildWorld(); } catch (e) { console.error('buildWorld failed', e); }
     if (pending) { const p = pending; pending = null; render(...p); }
     onProgress && onProgress(1); shadowDirty = true; wake();
   }).catch((e) => { console.error(e); onProgress && onProgress(1); });
@@ -665,6 +701,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   function dispose() {
     disposed = true; cancelAnimationFrame(raf); raf = 0; clearTimeout(timer); timer = 0; clearTimeout(lostTimer); notice.remove();
     mq.removeEventListener('change', onMotion); motionObs.disconnect(); document.removeEventListener('visibilitychange', onVisible);
+    for (const w of idleWaiters.splice(0)) { clearTimeout(w.t); w.res(); }
     canvas.removeEventListener('pointerdown', wake); canvas.removeEventListener('webglcontextlost', onLost); canvas.removeEventListener('webglcontextrestored', onRestored); anims.clear(); pulse = goalOn = false;
     ro.disconnect();
     canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel);
@@ -678,8 +715,8 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   }
   const pawnInfo = () => pawns.map((p, i) => {
     let skinned = 0; p.body.traverse((o) => { if (o.isSkinnedMesh) skinned++; });
-    return { i, key: p.key, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i) };
+    return { i, key: p.key, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i), tile: p.tile, flip: fs < 0 };
   });
   const info = () => ({ frames: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
-  return { ready, render, setInsets, projectTile, dispose, info, pawnInfo }; // info(): dev-only stats
+  return { ready, render, setInsets, projectTile, whenIdle, dispose, info, pawnInfo }; // info(): dev-only stats
 }
