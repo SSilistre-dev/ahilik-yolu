@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { ILKELER, CITIES, BOARD, neighbors } from './data.js';
+import { ILKELER, CITIES, BOARD, AVATARS, neighbors } from './data.js';
 import { MODELS, CARD_ART } from './assets.js';
+import { reducedMotion } from './store.js';
 
 const P = 1.1;                     // tile pitch
 const HALF = 3.25;                 // terrain plate half size
@@ -317,11 +318,13 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
 
   // ----- pawns -----
   const clips = {};
-  function makePawn(i, color) {
-    const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS['pawn' + (i % 4)], g = loaded['pawn' + (i % 4)], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
+  const pawnKey = (i, avatar) => AVATARS.find((a) => a.id === avatar)?.model ?? 'pawn' + (i % 4); // karakter seçilmediyse koltuk sırası
+  function makePawn(i, color, avatar) {
+    const key = pawnKey(i, avatar);
+    const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS[key], g = loaded[key], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
     const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.2, 0.22, 0.05, 24), true), color), paint(norm(new THREE.TorusGeometry(0.205, 0.014, 6, 28).rotateX(Math.PI / 2).translate(0, 0.025, 0), true), 0xfff4d6)]), procMat);
     disc.receiveShadow = true; disc.position.y = 0.025; body.position.y = 0.04;
-    const pw = { root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false, live: true };
+    const pw = { key, root, body, mixer: null, idle: null, walk: null, yaw: 0, yawT: 0, target: V3(), init: false, live: true };
     const characterOk = g && (() => {
       try {
         const skins = []; model.traverse((o) => { if (o.isSkinnedMesh) skins.push(o); });
@@ -474,9 +477,11 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   const anims = new Map();
   let raf = 0, timer = 0, pulse = false, lastT = 0, disposed = false, lost = false, activeIdx = 0, shadowDirty = true, lastActivity = performance.now();
   const mq = matchMedia('(prefers-reduced-motion: reduce)');
-  let calm = mq.matches; // reduced motion: snap instead of animating, no ornamental loop
-  const onMotion = (e) => { calm = e.matches; wake(); };
+  let calm = reducedMotion(); // reduced motion (OS or settings): snap instead of animating, no ornamental loop
+  const onMotion = () => { calm = reducedMotion(); wake(); };
   mq.addEventListener('change', onMotion);
+  const motionObs = new MutationObserver(onMotion); // settings screen toggles <html data-motion>
+  motionObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
   const anim = (key, dur, fn) => { anims.set(key, { t0: performance.now(), dur, fn }); wake(); };
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   const yawBusy = () => pawns.some((p) => Math.abs(wrap(p.yawT - p.yaw)) > 0.01);
@@ -567,7 +572,8 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
     state.players.forEach((pl, i) => {
       const to = pawnTarget(state, i);
       let pw = pawns[i];
-      if (!pw) { pw = pawns[i] = makePawn(i, pl.color); pw.root.position.copy(to); pw.target.copy(to); }
+      if (pw && fresh && pw.key !== pawnKey(i, pl.avatar)) { disposePawn(pw); pw = pawns[i] = null; } // yeni oyunda karakter değiştiyse model yenilenir
+      if (!pw) { pw = pawns[i] = makePawn(i, pl.color, pl.avatar); pw.root.position.copy(to); pw.target.copy(to); }
       else if (fresh) { setWalk(pw, false); pw.yaw = pw.yawT = 0; pw.root.position.copy(to); pw.target.copy(to); }
       else if (!pw.target.equals(to)) hop(pw, i, to);
     });
@@ -658,7 +664,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
 
   function dispose() {
     disposed = true; cancelAnimationFrame(raf); raf = 0; clearTimeout(timer); timer = 0; clearTimeout(lostTimer); notice.remove();
-    mq.removeEventListener('change', onMotion); document.removeEventListener('visibilitychange', onVisible);
+    mq.removeEventListener('change', onMotion); motionObs.disconnect(); document.removeEventListener('visibilitychange', onVisible);
     canvas.removeEventListener('pointerdown', wake); canvas.removeEventListener('webglcontextlost', onLost); canvas.removeEventListener('webglcontextrestored', onRestored); anims.clear(); pulse = goalOn = false;
     ro.disconnect();
     canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onCancel);
@@ -672,7 +678,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   }
   const pawnInfo = () => pawns.map((p, i) => {
     let skinned = 0; p.body.traverse((o) => { if (o.isSkinnedMesh) skinned++; });
-    return { i, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i) };
+    return { i, key: p.key, skinned, mixer: p.mixer ? p.mixer.getRoot().uuid : null, idle: !!p.idle && p.idle.isRunning(), x: +p.root.position.x.toFixed(3), z: +p.root.position.z.toFixed(3), moving: anims.has('p' + i) };
   });
   const info = () => ({ frames: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures });
   return { ready, render, setInsets, projectTile, dispose, info, pawnInfo }; // info(): dev-only stats

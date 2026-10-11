@@ -45,3 +45,8 @@ test('version: kapı bozuk girdiyi yakalar (kendini sınar)', () => {
   assert.ok(checkVersions({ ...ok, files: [...ok.files, 'yeni.js'], sources: ok.sources }).length > 0, 'yeni modül kayıtsız');
   assert.ok(checkVersions({ ...ok, html: ok.html.replace(/\s*"\.\/src\/bot\.js": "[^"]*",/, '') }).length > 0, 'importmap girdisi eksik');
 });
+
+test('version: src/version.js VERSION, sw.js V ile aynı (X02)', async () => {
+  const { VERSION } = await import('../src/version.js');
+  assert.equal(String(VERSION), read('sw.js').match(/^const V = (\d+);/m)[1]);
+});

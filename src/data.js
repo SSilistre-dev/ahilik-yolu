@@ -64,3 +64,27 @@ for (const city of Object.keys(CITIES)) {
 export const HAND_SIZE = 6;
 export const AWARD_START = 4;
 export const PLAYER_COLORS = ['#d0302b', '#2f5fb3', '#5aa832', '#f5c518', '#e0479e', '#8a5a2b'];
+
+// Karakterler (M04). model: MODELS anahtarı (assets.js); portre 2B: renk diski + glyph.
+export const AVATARS = [
+  { id: 'rogue_hooded', name: 'Kervancı', model: 'pawn0', color: '#d0302b', glyph: '🐪' },
+  { id: 'knight', name: 'Yiğit', model: 'pawn1', color: '#2f5fb3', glyph: '🛡️' },
+  { id: 'barbarian', name: 'Pehlivan', model: 'pawn2', color: '#5aa832', glyph: '💪' },
+  { id: 'mage', name: 'Bilge', model: 'pawn3', color: '#f5c518', glyph: '📜' },
+];
+export const AVATAR_IDS = AVATARS.map(a => a.id);
+export const NAME_MAX = 16;
+
+// Oyuncu adı: NFC, boşluk teke iner, kontrol/sıfır genişlik/bidi karakterleri silinir, 16 kod noktası; boşsa null.
+export function cleanName(raw) {
+  if (typeof raw !== 'string') return null;
+  const s = raw.normalize('NFC').replace(/\s+/g, ' ')
+    .replace(/[\p{Cc}\u200B-\u200F\u202A-\u202E\u2060-\u2069\u061C\uFEFF]/gu, '').trim();
+  return s ? [...s].slice(0, NAME_MAX).join('').trim() : null;
+}
+
+// n koltuk için karakter listesi: `first` ilk, sonrası varsayılan sırayla (n karakterden fazlaysa başa sarar).
+export function assignAvatars(n, first) {
+  const order = AVATAR_IDS.includes(first) ? [first, ...AVATAR_IDS.filter(x => x !== first)] : AVATAR_IDS;
+  return Array.from({ length: n }, (_, i) => order[i % order.length]);
+}

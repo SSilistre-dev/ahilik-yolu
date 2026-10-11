@@ -2,6 +2,7 @@
   "name": "Ahilik Yolu",
   "short_name": "Ahilik Yolu",
   "lang": "tr",
+  "description": "İGİAD'ın Ahilik Yolu kutu oyununun dijital uyarlaması — ssilistre.dev",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#2b1d12",

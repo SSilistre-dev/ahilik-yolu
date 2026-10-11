@@ -103,8 +103,9 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
   three.js `0.160.0` importmap ile `cdn.jsdelivr.net`'ten yüklenir. Proje GitHub Pages'te olduğu gibi çalışır.
 - Varsayılan mod 1 insan + 1–3 bot. Eller gizlidir (başkasının elinde yalnız kart sayısı görünür);
   aynı cihazda birden çok insan varsa "Telefonu X'e ver" perdesi çıkar (v4).
-- Bot basittir: göreve BFS ile en kısa `move` yapar. Yazıyı okur, takas teklif eder, takas ve yol katkısına cevap verir,
-  kapalı yolu açmaya girişir; hamle yoksa `pass` eder (v4, `src/bot.js`).
+- Bot (`src/bot.js`) üç seviyedir (AHI-021, bkz. "Bot imzası"). Orta: göreve BFS ile en kısa `move` yapar. Yazıyı okur, takas teklif eder,
+  takas ve yol katkısına cevap verir, kapalı yolu açmaya girişir; hamle yoksa `pass` eder (v4). Kolay: olasılıklı, takas teklif etmez, yol açmaz.
+  Zor: tur içi arama, rozet çarpan eşikleri (AHI-022), liderin yolunu kapatma (AHI-023), kargo zamanlaması (AHI-025).
 - Kargo kartı `phase==='ahlak'` ya da `phase==='move'` iken, `movesThisTurn===0` ve `!moveDone` ise oynanır
   (AHI-005, bkz. v6). Ahlak fazında oynanırsa o tur ahlak kartı açılmaz. Ahlak kartı açmak `movesThisTurn`'i artırmaz.
   Kargo görev şehrine uçarsa ticaret tamamlanır.
@@ -127,7 +128,7 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
 
 ## Sözleşme (dondurulmuş)
 
-Statik veriler `src/data.js` içinde: `ILKELER`, `ILKE_IDS`, `CITIES`, `BOARD`, `neighbors`, `CARDS`, `HAND_SIZE`, `AWARD_START`, `PLAYER_COLORS`.
+Statik veriler `src/data.js` içinde: `ILKELER`, `ILKE_IDS`, `CITIES`, `BOARD`, `neighbors`, `CARDS`, `HAND_SIZE`, `AWARD_START`, `PLAYER_COLORS`; profil (M04): `AVATARS` (`{id,name,model,color,glyph}`; `model` = `MODELS` anahtarı), `AVATAR_IDS`, `NAME_MAX` (16), `cleanName(raw) -> string|null` (NFC, kontrol/sıfır genişlik/bidi silinir, boşluk teke iner, ilk 16 kod noktası), `assignAvatars(n, first) -> id[]`.
 Kartlara her yerde `cardId` ile başvurulur.
 
 ```js
@@ -136,6 +137,8 @@ state = {
   phase: 'ahlak'|'close'|'move'|'over',
   turn, active, startIdx,          // turn counter, active player idx, first player idx
   endgame: false,                  // end triggered; game ends when turn wraps to startIdx
+  long: false,                     // v6 (AHI-028): uzun oyun seçeneği, varsayılan kapalı
+  reshuf: false,                   // v6 (AHI-028): ahlak ıskartası bir kez karıştırıldı
   movesThisTurn: 0,
   pendingClose: null,              // ilke id while phase==='close'
   moveDone: false,                 // v4: ticaret bitti, bu turda hareket kalmadı
@@ -144,7 +147,7 @@ state = {
   offersThisTurn: 0, roadTries: 0, // v4: tur içi sayaçlar (bot döngü koruması), endTurn'de 0
   tiles: [25]{ idx, r, c, kind:'city'|'ilke', ilke, city, closed:false, closedBy:null, badges:0, occupants:[pIdx] }, // occupants ordered by arrival
   awards: { [ilke]: 4 },
-  players: [{ name, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
+  players: [{ name, avatar /*AVATAR_IDS içinden ya da null*/, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
   decks: { yol:[], yolDiscard:[], ahlak:[], ahlakDiscard:[], ticaret:[] },
 }
 ```
@@ -394,6 +397,17 @@ Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
 
   "Ödül havuzları boşaldı" koşulu doğru çalışır (`test/game.test.js`, "all awards empty") ama pratikte nadirdir; kural kitabıyla aynıdır,
   değiştirilmez. İnsanlı oyunda oran farklı olabilir, ölçülmedi.
+- **Uzun oyun (AHI-028, kullanıcı kararı: seçenek var, varsayılan KAPALI).** Kitapta yoktur; 5-6 oyunculu masada oyun kısa kaldığı için isteğe bağlıdır.
+  `newGame({ ..., long: true })`: ahlak destesi boşaldığında bitiş aşamasına girilmez; bir sonraki tur başında ıskarta bir kez karıştırılıp yeni deste olur
+  (`reshuf = true`), iki deste de bitince normal bitiş. Kapalı karelerdeki ahlak kartları ıskartada değildir, yeni deste 21 karttan küçük olabilir.
+  Ticaret destesi ve ödül havuzu bitişi değişmez; bitiş nedeni çoğunlukla ticaret destesine kayar (ölçüm: docs/ARCHITECTURE.md §9). `long` verilmezse davranış
+  birebir aynıdır. Arayüz anahtarı ve oda ayarı menü issue'larındadır (5-6 oyuncuda görünür).
+- **Denge notu: ilk oyuncu (AHI-027).** Bot ölçümü (`make sim`, seviyeler ve başlayan koltuk bağımsız döner): 4 oyuncuda başlayandan sıra kazanma payı
+  %23,4 / 26,0 / 25,9 / 24,7 (Orta, 12000 oyun, ±0,8); hepsi Zor için %23,6 / 26,6 / 25,0 / 24,8 (3008 oyun, ±1,6). Mekanizma: ahlak destesi 21 karttır;
+  21 mod P kadar ilk koltuk bir kart fazla çeker (4p: 5,95 vs 5,00; 5p: 4,93 vs 4,00; 6p: ilk 3 koltuk 3,96 vs 3,00; 3p ve 2p'de kayma yok/küçük).
+  Başlayan koltuk ortalama 0,5 rozet fazla öder, fark kazanma payında yalnız yaklaşık 1,6 puan (4p). 3p: 33,6 / 32,1 / 34,4 (fark anlamsız).
+  Karar: kitap kuralı korunur, kural motoru değişmez, ilk oyuncu telafisi yoktur. Yazar isterse ayrı issue: sondan başlayan koltuklara ilk tur ek yol kartı.
+  Kilit: `test/balance.test.js` (deste boyutu ya da çekim kuralı değişirse haber verir). Tablolar: docs/ARCHITECTURE.md §9.
 - **Rozet kasası (kural 29, s.2).** Kutuda 36 gümüş ve 16 altın rozet vardır. Dijitalde kasa sınırsızdır; kitap tükenme için kural koymadığından
   modellenmez (puan yalnız toplam rozet sayısıdır, gümüş/altın gösterimdir). Bot simülasyonunda (2000 oyun/oyuncu sayısı, 5'li yığınlar altına
   çevrilmiş varsayımıyla) eşzamanlı en çok rozet:
@@ -440,7 +454,7 @@ eventsFor(events, seat) -> events      // seat'e gösterilebilir event'ler
 Değişmez test şartı: rastgele oyunun her adımında, bir koltuğun kendi eli dışındaki hiçbir yol kartı kimliği ve hiçbir deste sırası `JSON.stringify(view)` ve `JSON.stringify(eventsFor(...))` içinde geçmez.
 
 ### Bot imzası
-`botAction(view, legal, level) -> Action`. `level`: `'easy' | 'medium' | 'hard'`. Bot yalnız kendi koltuğunun `view`'ını ve `legal` listesini görür; `legal`'i çağıran taraf tam state'ten `legalActions(state)` ile üretir. Bot saf ve deterministiktir: rastgelelik yalnız `view.gameId`, `view.turn`, `view.movesThisTurn`, `view.offersThisTurn`, `view.roadTries` ve `legal.length` değerlerinden türetilir. Aynı view aynı kararı verir (yerel ve sunucu oturumunda aynı).
+`botAction(view, legal, level) -> Action`. `level`: `'easy' | 'medium' | 'hard'`. Bot yalnız kendi koltuğunun `view`'ını ve `legal` listesini görür; `legal`'i çağıran taraf tam state'ten `legalActions(state)` ile üretir. Bot saf ve deterministiktir: rastgelelik (yalnız Kolay) yalnız view alanlarından türetilir (`gameId`, `turn`, `phase`, `movesThisTurn`, `offersThisTurn`, `roadTries`, `pending.kind`, `declined.length` ve kendi eli); `state.seed` ve rakip eli hiç okunmaz. Bilinmeyen seviye `bilinmeyen bot seviyesi: ...` hatası verir. Aynı view aynı kararı verir (yerel ve sunucu oturumunda aynı).
 
 ### Koltuk, token, host
 - Koltuk numarası `players[]` indeksidir (0–5). Lobide koltuklar sıkışık dizidir; bir koltuk kalkınca sonrakiler kayar ve etkilenen insanlara yeni `welcome` gider.
