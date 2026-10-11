@@ -103,6 +103,7 @@ function act(action, isBot) {
   if (isBot) botFails = 0;
   if (!isBot) sfx.play('click');
   if (isBot) lastBotAct = Date.now();
+  if (isBot) ui.botStep?.(res.events, actor(state), res.state); // state henüz eski: aksiyonu yapan koltuk
   if (isBot || action.type !== 'move') undoStack = [];
   else if (res.events.some(e => e.type === 'trade')) undoStack = [];
   else undoStack.push(state);
@@ -143,14 +144,16 @@ function update(events) {
   effects(events);
   if (state.phase !== 'over' && who.bot) {
     const d = botDelays(getSettings()); // ahlak sonrası reveal animasyonu görünsün diye uzun
+    // Yürüyen piyon durmadan ve UI kuyruğundaki adımlar (ahlak/ticaret animasyonu dahil) bitmeden sıradaki bot aksiyonu başlamaz.
     const ms = events.some(e => e.type === 'ahlak' && !e.empty) ? d.ahlak : d.bot, seq = ++botSeq;
-    scene.whenIdle().then(() => { if (seq === botSeq && state) clock.schedule(botNext, ms); }); // yürüyen piyon durmadan sıradaki bot aksiyonu başlamaz
+    scene.whenIdle().then(() => { if (seq === botSeq && state) clock.schedule(botNext, Math.max(ms, ui.botBacklog?.() ?? 0)); });
   }
 }
 
 // Bot sırasında dokununca sıradaki bot aksiyonu hemen gelir.
 addEventListener('pointerdown', () => {
   if (!clock.pending || !state || !state.players[actor(state)].bot) return;
+  ui.botSkip?.();
   clock.schedule(botNext, Math.max(0, BOT_MIN_GAP - (Date.now() - lastBotAct)));
 }, true);
 

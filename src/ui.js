@@ -1,7 +1,8 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS, neighbors } from './data.js';
 import { createTutorial } from './tutorial.js';
 import { turnsLeft, endReason } from './game.js';
-import { reducedMotion } from './store.js';
+import { reducedMotion, getSettings, botDelays } from './store.js';
+import { botSteps, createStepQueue } from './botclock.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -109,6 +110,15 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
   let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null, rpick = [], rkey = '';
   let bannerSeed = null, wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
+  // Bot aksiyonları: kuyruk her adımı en az `hold` ms gösterir (şerit = pill). Anlatılan olaylar toast'ı tekrarlamaz.
+  let curStep = null;
+  const told = new WeakSet();
+  const steps = createStepQueue({ onShow: s => { curStep = s; if (st) renderPill(); }, onIdle: () => { curStep = null; if (st) renderPill(); } });
+  // Ahlak kartı/ticaret animasyonu bitmeden sıradaki bot aksiyonu başlamasın (hareket azaltmada kısa).
+  const holdFor = s => {
+    const d = botDelays(getSettings()), rm = reduced();
+    return Math.max(600, s.card ? Math.max(d.ahlak, rm ? 1700 : 2700) : s.type === 'trade' ? Math.max(d.bot, rm ? 1800 : 2400) : d.bot);
+  };
 
   const tut = createTutorial(root, { art: cardArt, url });
   const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected, blocked: () => !!st && (needCurtain() || !!st.pending || !!sheet), viewer: () => viewer };
@@ -159,7 +169,10 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     return has('endTurn') ? 'Hamle kalmadı → Turu Bitir' : has('pass') ? 'Hareket edecek kartın yok: takas dene ya da Pas de' : PHASE.move;
   }
   function renderPill() {
-    pillEl.textContent = hint();
+    const bs = curStep && st.phase !== 'over' ? curStep : null, p = bs && st.players[bs.who];
+    if (p) { pillEl.innerHTML = `<i class="dot"></i><b>${esc(p.name)}</b><span>${esc(bs.text)}</span>`; pillEl.style.setProperty('--pc', p.color); }
+    else { pillEl.textContent = hint(); pillEl.style.removeProperty('--pc'); }
+    pillEl.classList.toggle('botstep', !!p);
     pillEl.classList.toggle('bot', !human() && !asked() && st.phase !== 'over');
   }
   function renderGoal() {
@@ -246,7 +259,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     const moveOk = new Set(legal.filter(a => a.type === 'move' || a.type === 'kargo').map(a => kind(a.card)));
     const mid = (n - 1) / 2;
     fanEl.style.setProperty('--n', n);
-    fanEl.style.setProperty('--step', n > 6 ? .6 : .74); // 7+ cards: overlap more so the fan fits 360px
+    fanEl.style.setProperty('--step', n > 6 ? .6 : .8); // 7+ cards: overlap more so the fan fits 360px
     const wig = mine && !wiggled && st.phase === 'move';
     fanEl.innerHTML = hand.map((id, i) => cardHtml(id, `${id === selected ? 'sel' : ''} ${mine && (st.phase === 'move' || st.phase === 'ahlak') && !moveOk.has(kind(id)) ? 'dim' : ''} ${wig && moveOk.has(kind(id)) ? 'wig' : ''}`,
       `data-card="${id}"`, `--i:${i};--r:${((i - mid) * (n > 6 ? 3 : 4.2)).toFixed(1)}deg;--y:${(((i - mid) ** 2) * (n > 6 ? .8 : 1.7)).toFixed(1)}px`)).join('');
@@ -585,7 +598,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
         seed = st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
         rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
         log = []; lastActive = -1; lastHl = ''; handOpen = true; selected = null; passAsk = false;
-        clearTimeout(celebrate); clearTimeout(toastTimer);
+        clearTimeout(celebrate); clearTimeout(toastTimer); steps.clear(); curStep = null;
         toastEl.replaceChildren(); fxEl.replaceChildren(); drawerEl.hidden = true;
       }
       // Tek insan varsa telefon hep onda; çok insanda perde kalkınca viewer atanır, karar verici değişince düşer.
@@ -594,7 +607,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
       if (selected && ((st.phase !== 'move' && !(st.phase === 'ahlak' && CARDS[selected]?.kargo)) || !st.players[viewer ?? -1]?.hand.includes(selected))) selected = null;
       let k = 0;
       for (const ev of events) {
-        { const tx = evText(ev); if (tx) toast(tx); else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
+        { const tx = evText(ev); if (tx) { if (told.has(ev)) log.push(tx); else toast(tx); } else if (ev.text && ev.type !== 'badgePlaced') log.push(ev.text); }
         if (ev.type === 'endgame' && st.phase !== 'over' && bannerSeed !== seed) { bannerSeed = seed; lastBanner(endReason(st)); }
         if (ev.type === 'ahlak') {
           const id = ev.empty ? null : (ev.card || st.decks?.ahlakDiscard?.at(-1));
@@ -611,6 +624,12 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
       tut.update(st, legal, events, tutEls);
     },
     tutorial: tut,
+    // Bot aksiyonunu (events, who = aksiyonu yapan koltuk, state = sonuç) sıralı şeride ekler; render'dan ÖNCE çağrılır.
+    botStep(events, who, state) {
+      for (const s of botSteps(events, who, state)) { told.add(s.ev); steps.push(s, holdFor(s)); }
+    },
+    botBacklog: () => steps.backlog(),
+    botSkip() { rv?.finish(false); steps.skip(); },
     rejectReason: idx => !st || sheet ? null : rejectReason(st, legal, selected, viewer, idx),
     reject,
     // Board tap forwarded by integrator. Returns true if it triggered an action.
