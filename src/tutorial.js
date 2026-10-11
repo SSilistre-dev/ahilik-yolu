@@ -1,12 +1,12 @@
 // Çocuk dostu giriş: amaç kartları (intro), ilk turda canlı ipuçları (coach marks) ve "Nasıl Oynanır?" sayfası.
 // ui.js sürer: tutorial.update(state, legal, events, els) her render'da çağrılır. DOM'u root içine kendisi ekler.
 import { ILKELER, CARDS, CITIES } from './data.js';
-import { store, KEYS } from './store.js';
+import { store, KEYS, reducedMotion } from './store.js';
 
 const readFlags = () => store.get(KEYS.flags, {}, d => d && typeof d === 'object');
 const readDone = () => readFlags().tutorialDone === true;
 const writeDone = v => store.set(KEYS.flags, { ...readFlags(), tutorialDone: !!v });
-const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced = () => reducedMotion();
 
 const TEXT = {
   draw: 'Önce <b>Ahlak Kartı Aç</b> düğmesine dokun.',
@@ -33,6 +33,7 @@ export function createTutorial(root, { art, url }) {
   let done = readDone(), coach = !done, introOpen = false, helpOpen = false;
   let seed = null, hadMove = false, quiet = 0, resultUntil = 0, step = null, poll = 0, timer = 0;
   let S = null; // son { st, legal, els }
+  let armed = false; // Ayarlar "Rehberi baştan göster": bir sonraki yeni oyunda intro yeniden açılır
   const img = (src, cls = '') => `<img class="${cls}" src="${src}" alt="" decoding="async" draggable="false">`;
   const coin = '<i class="ay-coin"></i>';
   const ilkeName = id => ILKELER[id]?.name ?? '';
@@ -220,9 +221,11 @@ export function createTutorial(root, { art, url }) {
 
   return {
     openHelp, replay,
+    reset() { if (readDone()) writeDone(false); armed = true; },
     update(st, legal, events, els) {
       S = { st, legal, els };
       if (st.seed !== seed) {
+        if (armed) { armed = false; done = false; coach = true; seed = null; }
         if (seed !== null && coach) { coach = false; done = true; writeDone(true); } // ilk oyun bitip yenisi başladı
         const first = seed === null; seed = st.seed; hadMove = false; resultUntil = quiet = 0;
         if (first && coach) openIntro();

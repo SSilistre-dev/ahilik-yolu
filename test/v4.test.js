@@ -256,3 +256,53 @@ test('bot answers trade offers and road asks with a legal action', () => {
   assert.ok(isLegal(r, c));
   assert.equal(CARDS[c.cards[0]]?.ilke ?? 'comert', 'comert');
 });
+
+// ---- AHI-028: uzun oyun (5-6 oyuncu seçeneği; varsayılan kapalı) ----
+const bots = (n) => Array.from({ length: n }, (_, i) => ({ name: `B${i}`, bot: true }));
+const ahlakTotal = (s) => s.decks.ahlak.length + s.decks.ahlakDiscard.length + s.tiles.filter((t) => t.closedBy).length + (s.phase === 'close' ? 1 : 0);
+// Ahlak destesini tek karta indirir (kalanı ıskartada; toplam 21 korunur).
+const lastAhlak = (long) => {
+  const s = newGame({ players: bots(6), seed: 3, long });
+  s.decks.ahlakDiscard.push(...s.decks.ahlak.splice(0, s.decks.ahlak.length - 1));
+  return s;
+};
+
+test('uzun oyun: kapalıyken (varsayılan) ahlak destesi bitince oyun bitiş aşamasına girer', () => {
+  const s = lastAhlak(undefined);
+  assert.equal(s.long, false); assert.equal(s.reshuf, false);
+  const r = apply(s, { type: 'drawAhlak' });
+  assert.equal(r.state.endgame, true);
+});
+
+test('uzun oyun: ilk deste bitince oyun bitmez, ıskarta karışıp desteye döner (21 kart korunur); ikinci deste bitince biter', () => {
+  let s = lastAhlak(true);
+  assert.equal(s.long, true);
+  s = apply(s, { type: 'drawAhlak' }).state;
+  assert.equal(s.endgame, false, 'son kart çekildi ama oyun bitmedi');
+  assert.equal(ahlakTotal(s), 21);
+  for (let k = 0; s.turn < 1 && k < 500; k++) s = apply(s, decide(s)).state; // turun sonuna kadar
+  assert.equal(s.reshuf, true);
+  assert.equal(s.endgame, false);
+  assert.ok(s.decks.ahlak.length > 0 && s.decks.ahlak.length <= 21, `yeni deste ${s.decks.ahlak.length}`);
+  assert.equal(ahlakTotal(s), 21);
+  for (let k = 0; s.phase !== 'over' && k < 5000; k++) { s = apply(s, decide(s)).state; assert.equal(ahlakTotal(s), 21, `adım ${k}`); }
+  assert.equal(s.phase, 'over');
+  assert.equal(s.reshuf, true);
+  assert.equal(s.decks.ahlak.length === 0 || s.decks.ticaret.length === 0 || Object.values(s.awards).every((n) => n === 0), true, 'ikinci bitiş nedeni');
+});
+
+test('uzun oyun: 6 oyunculu 30 tohumda her aksiyon yasal ve oyun biter; normal oyundan uzundur', () => {
+  let longTurns = 0, normalTurns = 0;
+  for (let seed = 1; seed <= 30; seed++) for (const long of [true, false]) {
+    let s = newGame({ players: bots(6), seed, startIdx: seed % 6, long });
+    for (let k = 0; s.phase !== 'over' && k < 5000; k++) {
+      const a = decide(s);
+      assert.ok(legalActions(s).some((l) => isDeepStrictEqual(l, a)), `seed ${seed} long ${long}: ${JSON.stringify(a)}`);
+      s = apply(s, a).state;
+    }
+    assert.equal(s.phase, 'over');
+    assert.equal(s.reshuf, long ? s.reshuf : false);
+    if (long) longTurns += s.turn; else normalTurns += s.turn;
+  }
+  assert.ok(longTurns > normalTurns, `uzun ${longTurns} normal ${normalTurns}`);
+});

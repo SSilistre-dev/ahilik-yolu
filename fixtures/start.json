@@ -1,4 +1,6 @@
 {
+ "long": false,
+ "reshuf": false,
  "seed": 1,
  "rng": 12345,
  "phase": "ahlak",

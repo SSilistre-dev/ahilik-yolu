@@ -42,6 +42,7 @@ export function createMenu(root, deps = {}) {
 
   const api = {
     define(name, build) { defs[name] = build; },
+    has: (name) => name in defs,
     show(name, params = {}, dir = 'forward') {
       const build = defs[name];
       if (!build) throw new Error(`menu: tanımsız ekran ${name}`);

@@ -1,6 +1,7 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS, neighbors } from './data.js';
 import { createTutorial } from './tutorial.js';
 import { turnsLeft, endReason } from './game.js';
+import { reducedMotion } from './store.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -10,7 +11,7 @@ const money = p => p.trades.reduce((s, id) => s + CARDS[id].value, 0);
 const cityName = id => CITIES[id]?.name ?? id;
 // Engine dedupes identical cards in legalActions; compare cards by kind, not id.
 const kind = id => { const c = CARDS[id]; return c?.joker ? 'J' : c?.kargo ? 'K' : `${c?.ilke}${c?.hasText ? 'T' : ''}`; };
-const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduced = () => reducedMotion();
 
 // Card art (own mapping; does not depend on src/assets.js). Resolved relative to this module.
 const ART = new URL('../assets/cards/', import.meta.url).href;
@@ -87,33 +88,27 @@ export function nextViewer(st, viewer) {
   return viewer === a || (viewer === st.active && st.players[a]?.bot) ? viewer : null;
 }
 
-const SLIDES = [
-  { t: '1 · Ahlak kartı aç', imgs: ['ahlak-back', 'ahlak-adaletli'], p: 'Her tur başında bir ahlak kartı çekersin. Olumluysa o ilkenin karelerine rozet konur, olumsuzsa bir kare kapanır.' },
-  { t: '2 · Yol kartıyla ilerle', imgs: ['yol-comert', 'yol-ahievran', 'yol-kargo'], p: 'Kartın ilkesiyle eşleşen komşu kareye git. Ahi Evran joker, Kargo seni istediğin şehre uçurur.' },
-  { t: '3 · Şehre ulaş, rozet topla', imgs: ['city-ankara', 'ticaret-ankara-2'], p: 'Görev şehrine komşu kareye varınca Şehre Gir\'e dokun ya da yolu uzatıp rozet topla; tur bitince ticaret kendiliğinden tamamlanır. Kazanç = para × rozet çarpanı.' },
-];
-
 // onLayout({top, bottom, right}) — all CSS px, measured against the viewport:
 //   top    = px from the viewport TOP covered by the HUD (chips + hint pill + goal band). The toast overlays just below it and is not counted.
 //   bottom = px from the viewport BOTTOM covered by the dock (hand + buttons) = innerHeight - dock visible top.
 //            On desktop (>900px) the dock is a right sidebar, so bottom = 0.
 //   right  = px from the viewport RIGHT covered by the sidebar (desktop only, else 0); #stage{right} CSS already accounts for it.
 // Called only when a value changed by >= 2px.
-export function createUI(root, { onAction, onTileHighlight, onLayout }) {
+export function createUI(root, { onAction, onTileHighlight, onLayout, onPause }) {
   root.classList.add('ay-root');
   root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-last" hidden></div><div class="ay-pill"></div>
-      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="log" aria-label="Kayıt">☰</button></div></div>
+      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="pause" aria-label="Duraklat">⏸</button></div></div>
       <div class="ay-toasts"></div></div>
     <div class="ay-dock"><div class="ay-handle ay-p" data-a="fold"></div><div class="ay-sub ay-p"></div><div class="ay-acts ay-p"></div><div class="ay-fan"></div></div>
     <div class="ay-modal" hidden></div><div class="ay-modal ay-sheetwrap" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div><div class="ay-curtain ay-p" hidden></div>`;
   const $ = s => root.querySelector(s);
   const hudEl = $('.ay-hud'), goalEl = $('.ay-goal'), chipsEl = $('.ay-chips'), lastEl = $('.ay-last'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
     handleEl = $('.ay-handle'), subEl = $('.ay-sub'), actsEl = $('.ay-acts'), fanEl = $('.ay-fan'),
-    modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx');
+    modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx'), pauseBtn = $('[data-a="pause"]');
 
   let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null, rpick = [], rkey = '';
   let bannerSeed = null, wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
-  let log = [], lastActive = -1, startEl = null, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
+  let log = [], lastActive = -1, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
 
   const tut = createTutorial(root, { art: cardArt, url });
   const tutEls = { hud: hudEl, dock: dockEl, fan: fanEl, acts: actsEl, selected: () => selected, blocked: () => !!st && (needCurtain() || !!st.pending || !!sheet), viewer: () => viewer };
@@ -527,6 +522,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
     else if (a === 'ready') { viewer = actorIdx(); renderAll(); tut.update(st, legal, [], tutEls); }
     else if (a === 'fold') { handOpen = !handOpen; dockEl.classList.toggle('closed', !handOpen); renderHand(); setTimeout(measure, 350); }
     else if (a === 'help') tut.openHelp();
+    else if (a === 'pause') onPause?.();
     else if (a === 'log') { drawerEl.hidden = !drawerEl.hidden; if (!drawerEl.hidden) renderDrawer(); }
     else if (a === 'slot') { if (lastAhlakId) reveal(lastAhlakId, { flip: false }); }
     else if (a === 'tr') {
@@ -584,6 +580,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
   return {
     render(state, legalActions = [], events = []) {
       st = state; legal = legalActions;
+      pauseBtn.hidden = st.phase === 'over'; // oyun sonunda Duraklat yok
       if (st.seed !== seed) {
         seed = st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
         rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
@@ -658,66 +655,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout }) {
       }
     },
     flyCoins,
-    showStart(onStart) {
-      startEl?.remove();
-      startEl = document.createElement('div');
-      startEl.className = 'ay-start ay-p';
-      let n = 2, first = 0;
-      const rows = Array.from({ length: 6 }, (_, i) => `<div class="ay-prow" data-i="${i}" style="--pc:${pcolor(i)}" ${i >= n ? 'hidden' : ''}>
-        <span class="ay-ring">${i + 1}</span><input class="ay-input" maxlength="16" value="${i ? `Bot ${i}` : 'Sen'}" autocomplete="off" aria-label="${i + 1}. oyuncunun adı">
-        <div class="ay-seg" role="group" aria-label="İnsan mı bot mu"><button type="button" data-h="1" class="${i ? '' : 'sel'}">İnsan</button><button type="button" data-h="0" class="${i ? 'sel' : ''}">Bot</button></div></div>`).join('');
-      startEl.innerHTML = `${img(url('board'), 'ay-bgimg', true)}<div class="ay-sbox">
-        ${img(url('logo'), 'ay-logo', true)}
-        <div class="ay-field">Oyuncu sayısı</div>
-        <div class="ay-toggles five">${[2, 3, 4, 5, 6].map(k => `<button class="ay-tg ${k === n ? 'sel' : ''}" data-n="${k}"><b>${k}</b><small>kişi</small></button>`).join('')}</div>
-        <div class="ay-players">${rows}</div>
-        <div class="ay-ask ay-dirnote" hidden>Masada kural kitabındaki gibi sağdan sola oturun. Sıra bu listedeki gibi gider.</div>
-        <div class="ay-field">İlk kim başlar? <small>(yaşı en küçük)</small></div>
-        <div class="ay-starters"></div>
-        <div class="ay-warn" hidden>En az bir insan oyuncu olmalı.</div>
-        <button class="ay-btn primary big go" data-go>Oyuna Başla</button>
-        <div class="ay-how"><h3>Nasıl oynanır?</h3>
-          <div class="ay-car">${SLIDES.map(s => `<div class="ay-slide"><b>${s.t}</b><div class="imgs">${s.imgs.map(f => img(url(f), '', true)).join('')}</div><p>${s.p}</p></div>`).join('')}</div>
-          <div class="ay-dots">${SLIDES.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div></div></div>`;
-      const car = startEl.querySelector('.ay-car'), dots = [...startEl.querySelectorAll('.ay-dots i')];
-      car.addEventListener('scroll', () => { const i = Math.round(car.scrollLeft / car.clientWidth); dots.forEach((d, j) => d.classList.toggle('on', i === j)); }, { passive: true });
-      const prow = i => startEl.querySelector(`.ay-prow[data-i="${i}"]`);
-      const isBot = i => prow(i).querySelector('[data-h="0"]').classList.contains('sel');
-      const nameOf = i => prow(i).querySelector('input').value.trim() || (isBot(i) ? `Bot ${i}` : `Oyuncu ${i + 1}`);
-      const paint = () => {
-        if (first >= n) first = 0;
-        startEl.querySelector('.ay-starters').innerHTML = Array.from({ length: n }, (_, i) =>
-          `<button type="button" class="ay-st ${i === first ? 'sel' : ''}" data-s="${i}" style="--pc:${pcolor(i)}"><i class="dot"></i>${esc(nameOf(i))}</button>`).join('');
-        const ok = Array.from({ length: n }, (_, i) => i).some(i => !isBot(i));
-        startEl.querySelector('.ay-warn').hidden = ok;
-        startEl.querySelector('.ay-dirnote').hidden = Array.from({ length: n }, (_, i) => i).filter(i => !isBot(i)).length < 2;
-        startEl.querySelector('[data-go]').disabled = !ok;
-      };
-      startEl.addEventListener('input', paint);
-      startEl.addEventListener('click', e => {
-        const b = e.target.closest('button'); if (!b) return;
-        if (b.dataset.n) {
-          n = +b.dataset.n;
-          startEl.querySelectorAll('[data-n]').forEach(x => x.classList.toggle('sel', x === b));
-          for (let i = 0; i < 6; i++) prow(i).hidden = i >= n;
-          paint();
-        } else if (b.dataset.h) {
-          const row = b.closest('.ay-prow'), i = +row.dataset.i, input = row.querySelector('input'), bot = b.dataset.h === '0';
-          row.querySelectorAll('[data-h]').forEach(x => x.classList.toggle('sel', x === b));
-          if (bot && /^Oyuncu \d+$/.test(input.value)) input.value = `Bot ${i}`;
-          else if (!bot && /^Bot \d+$/.test(input.value)) input.value = `Oyuncu ${i + 1}`;
-          paint();
-        } else if (b.dataset.s) { first = +b.dataset.s; paint(); }
-        else if (b.hasAttribute('data-go')) {
-          const players = Array.from({ length: n }, (_, i) => ({ name: nameOf(i), bot: isBot(i) }));
-          startEl.remove(); startEl = null;
-          // Preload: 7 ilke yol cards + card backs.
-          for (const f of [...ILKE_IDS.map(i => `yol-${i}`), 'yol-back', 'ahlak-back', 'ticaret-back']) new Image().src = url(f);
-          onStart({ players, startIdx: first });
-        }
-      });
-      paint();
-      root.appendChild(startEl);
-    },
+    // Oyun kaydı çekmecesi (Duraklat menüsünden).
+    openLog() { drawerEl.hidden = false; renderDrawer(); },
   };
 }

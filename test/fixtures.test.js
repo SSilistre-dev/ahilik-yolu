@@ -7,7 +7,7 @@ import { CARDS, ILKE_IDS } from '../src/data.js';
 
 const dir = new URL('../fixtures/', import.meta.url);
 const names = readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
-const keys = (o) => Object.keys(o).sort();
+const keys = (o) => Object.keys(o).filter((k) => k !== 'avatar').sort(); // avatar (M04) eski fixture'larda yok: isteğe bağlı
 const ref = newGame({ players: [{ name: 'a' }, { name: 'b' }], seed: 1 }); // motorun gerçek şeması
 
 // Hata listesi döner; boşsa fixture geçerli.
