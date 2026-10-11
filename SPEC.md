@@ -461,7 +461,7 @@ Değişmez test şartı: rastgele oyunun her adımında, bir koltuğun kendi eli
 - İlk bağlanan insan host'tur. Host ayrılırsa en küçük numaralı çevrimiçi insana devredilir.
 - Token: 32 onaltılık karakter (128 bit), yalnız o odada geçerli. İstemci `localStorage['ahilik.room.'+kod]` içinde saklar. Token hiçbir `lobby`/`game`/`emote` mesajında bulunmaz ve URL'ye konmaz.
 - Aynı token ile ikinci bağlantı gelirse eski bağlantı `error{code:'replaced'}` ile kapatılır.
-- Ad: NFC normalleştirilmiş, kırpılmış, 1–16 karakter, kontrol karakteri yok, yasaklı kelime listesi yok. Aynı ad ikinciye `" (2)"` ekiyle verilir (16 karaktere kırpılarak). `avatar`: 0–7 tamsayı.
+- Ad: NFC normalleştirilmiş, kırpılmış, 1–16 karakter, kontrol karakteri yok, yasaklı kelime listesi yok. Aynı ad ikinciye `" (2)"` ekiyle verilir (16 karaktere kırpılarak). `avatar`: `AVATARS` indeksi (0–3) tamsayı.
 
 ### Protokol v1 (WebSocket, JSON, `/ws/<KOD>`)
 Her mesaj `{ v:1, t:<tip>, ... }`. UTF-8 gövde en çok 8192 bayt; bağlantı başına saniyede en çok 20 mesaj. Aşan bağlantı `error{code:'rate'}` alır ve kapatılır. `hello` bağlantıdan sonra 10 sn içinde gelmezse bağlantı kapatılır.

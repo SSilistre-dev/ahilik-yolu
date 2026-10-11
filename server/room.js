@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { newGame, apply, actor, legalActions } from '../src/game.js';
 import { viewFor, eventsFor } from '../src/view.js';
 import { botAction } from '../src/bot.js';
+import { AVATARS } from '../src/data.js';
 
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const BOT_NAMES = ['Çırak', 'Kalfa', 'Usta', 'Yiğit', 'Kâtip', 'Hacı'];
@@ -114,7 +115,7 @@ export function join(room, { token, name, avatar } = {}, now, rand) {
   if (room.seats.length >= LIMITS.maxSeats) return fail('full');
   const n = cleanName(name);
   if (!n.ok) return fail('badName', false);
-  if (!Number.isInteger(avatar) || avatar < 0 || avatar > 7) return fail('badMsg', false);
+  if (!Number.isInteger(avatar) || avatar < 0 || avatar >= AVATARS.length) return fail('badMsg', false);
   const t = makeToken(room, rand);
   const host = room.hostToken === null;
   room.seats.push({ token: t, name: uniqueName(room, n.name), avatar, bot: false, level: null, ready: host, online: true, lostAt: null });

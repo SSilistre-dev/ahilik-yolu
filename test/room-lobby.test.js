@@ -94,7 +94,7 @@ test('join: ad doğrulama (boş, 17 karakter, kontrol karakteri, bidi, NFC)', ()
   const nfd = join(room, { name: '  Cafe\u0301  ', avatar: 0 }, T0, rand); // NFD girdi
   assert.equal(room.seats[2].name, 'Café');
   assert.equal(room.seats[2].name.length, 4);
-  assert.equal(join(room, { name: 'x', avatar: 8 }, T0, rand).error.code, 'badMsg');
+  assert.equal(join(room, { name: 'x', avatar: 4 }, T0, rand).error.code, 'badMsg');
   assert.equal(join(room, { name: 'x', avatar: 1.5 }, T0, rand).error.code, 'badMsg');
   assert.equal(join(room, { name: 'x', avatar: '1' }, T0, rand).error.code, 'badMsg');
   assert.ok(nfd.ok);
@@ -320,7 +320,7 @@ test('lobby yayını token içermez ve her insana gider', () => {
   run(disconnect(room, c, T0));
   // JSON ile çoğaltılan oda aynı sonucu verir (disk anlık görüntüsü)
   const a = room, copy = JSON.parse(JSON.stringify(room));
-  const step = (rm, rnd) => [receive(rm, h, msg('removeSeat', { seat: 1 }), T0 + 9, rnd), join(rm, { name: 'Yeni', avatar: 4 }, T0 + 9, rnd)];
+  const step = (rm, rnd) => [receive(rm, h, msg('removeSeat', { seat: 1 }), T0 + 9, rnd), join(rm, { name: 'Yeni', avatar: 2 }, T0 + 9, rnd)];
   assert.deepEqual(step(copy, mkRand(5)), step(a, mkRand(5)));
   assert.deepEqual(copy, a);
 });
