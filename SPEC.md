@@ -497,7 +497,7 @@ Sunucu → istemci:
 Hata kodları: `stale` (base eski), `illegal`, `notYourTurn`, `notHost`, `full`, `started`, `notFound`, `rate`, `tooBig`, `badMsg`, `badName`, `version` (protokol `v` desteklenmiyor), `kicked`, `replaced`, `expired`. Bağlantıyı kapatanlar: `full`, `started`, `notFound`, `rate`, `tooBig`, `version`, `kicked`, `replaced`, `expired`. `stale` sonrası sunucu güncel `game` mesajını ayrıca yollar.
 
 ### Oda yaşam döngüsü ve zamanlayıcılar
-`lobby -> game -> over -> (rematch) game`, her aşamadan 24 saat hareketsizlikle silinir. Hareket: insandan gelen `ping` dışı mesaj, bağlanma, kopma. Hiç insan katılmamış oda 1 saat sonra silinir.
+`lobby -> game -> over -> (rematch) game`, her aşamadan 24 saat hareketsizlikle silinir. Hareket: insandan gelen `ping` dışı mesaj, bağlanma, kopma. Hiç insan katılmamış oda ve insanı kalmamış lobi (son hareketten) 1 saat sonra silinir.
 
 | Olay | Süre | Sonuç |
 |---|---|---|
@@ -514,8 +514,17 @@ Sürüm: her başarılı `act` `version`'ı 1 artırır; oyun başında 1'dir. S
 ### Session arayüzü (istemci)
 ```js
 session = { mode:'local'|'online', you:seat|null, act(action), onUpdate(cb), undo?(), leave() }
-// cb({ view, legal, events, meta:{ conn:'ok'|'reconnecting'|'lost', deadline:epochMs|null, seats } })
+// cb({ view, legal, events, meta })
+//   view: gizli alanları boşaltılmış state; çevrimiçide `view.you` = benim koltuğum (yerelde yok)
+//   meta: { conn:'ok'|'reconnecting'|'lost', deadline:epochMs|null (istemci saatine çevrilmiş), seats,
+//           skew (sunucu-istemci ms), rematch:{votes,need}|null, version, gameId   // çevrimiçi
+//           botSeat:koltuk|null }                                                  // yerel: aksiyonu yapan bot
+// Çevrimiçi ek: code, onLobby(cb)  (lobby mesajı), onError(cb) (error mesajı), onEmote(cb) ({seat,id}),
+//   emote(id), rematch(), ready(on), addBot(level), setBot(seat,level), removeSeat(seat), setOptions(o), start()
+// Yerel ek: start(), skipWait()
+// main.js: startOnline(session) lobiden oyuna geçişi yapar (sahne yükle, session'ı bağla, 'game' ekranı).
 ```
+Açılışta `ahilik.room.<KOD>` token'ı saklı ve `GET /api/rooms/<KOD>` odanın yaşadığını söylüyorsa istemci lobiye/oyuna otomatik döner; "Odadan Ayrıl", lobiden çıkış ve oyun içi "Ana Menü" kaydı siler. `welcome` gelmeden `badMsg` (ad/karakter reddi) bağlantıyı `lost` yapar, yeniden denenmez.
 UI ve sahne `state` yerine `view` alır.
 
 ### Davet kodu

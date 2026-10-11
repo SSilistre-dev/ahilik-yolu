@@ -123,3 +123,21 @@ test('net: varsayılan URL location protokolünden gelir', () => {
     assert.equal(rig({ url: undefined }).net && (() => { const q = rig({ url: undefined }); q.net.connect({ name: 'A', avatar: 0 }); return q.last().url; })(), 'ws://localhost:8080/ws/K7M2QX');
   } finally { delete globalThis.location; }
 });
+
+test('net: welcome öncesi badMsg hello reddedildi demektir, yeniden bağlanma yok, lost + hata', () => {
+  const r = rig(); const errs = [];
+  r.net.on('error', m => errs.push(m.code));
+  r.net.connect({ name: 'A', avatar: 9 }); r.last().open();
+  r.last().recv({ v: 1, t: 'error', code: 'badMsg', msg: 'x' });
+  assert.deepEqual(errs, ['badMsg']);
+  assert.equal(r.net.conn, 'lost');
+  assert.ok(r.last().closedByClient);
+  assert.equal(r.timers.size, 0, 'ping/retry zamanlayıcısı yok');
+});
+
+test('net: welcome sonrası badMsg yalnız iletilir', () => {
+  const r = rig();
+  r.net.connect({ name: 'A', avatar: 0 }); r.last().open(); r.last().recv(welcome);
+  r.last().recv({ v: 1, t: 'error', code: 'badMsg', msg: 'x' });
+  assert.equal(r.net.conn, 'ok');
+});

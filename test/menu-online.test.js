@@ -93,3 +93,19 @@ test('lobi modeli: host kontrolleri kime görünür', () => {
   assert.equal(full.canAddBot, false);
   assert.equal(lobbyModel({ lobby: null, you: null }).seats.length, 0);
 });
+
+test('findLiveRoom: yaşayan oda kodu döner, ölü odanın kaydı silinir, ağ hatasında kalır', async () => {
+  const { createStore, roomKey } = await import('../src/store.js');
+  const mem = new Map();
+  const st = createStore({ getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v), removeItem: k => mem.delete(k), key: i => [...mem.keys()][i], get length() { return mem.size; } });
+  const { findLiveRoom, savedRooms } = await import('../src/menu-online.js');
+  st.set(roomKey('ABC234'), 't1'); st.set(roomKey('DEF567'), 't2'); st.set(roomKey('BAD000'), 't3'); st.set('ahilik.profile', {});
+  assert.deepEqual(savedRooms(st).sort(), ['ABC234', 'DEF567']); // geçersiz kod ve başka anahtarlar atlanır
+  const answers = { ABC234: { status: 200, body: { exists: false } }, DEF567: { status: 200, body: { exists: true, phase: 'game' } } };
+  const asked = [];
+  const code = await findLiveRoom(async c => { asked.push(c); return answers[c]; }, st);
+  assert.equal(code, 'DEF567');
+  assert.equal(st.get(roomKey('ABC234')), null, 'ölü oda unutuldu');
+  assert.equal(await findLiveRoom(async () => ({ status: 0, body: null }), st), null);
+  assert.equal(st.get(roomKey('DEF567')), 't2', 'ağ hatasında kayıt kalır');
+});

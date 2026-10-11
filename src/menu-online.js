@@ -62,6 +62,23 @@ export function joinCheck(status, body, hasToken) {
   return { ok: true };
 }
 
+// Saklı token'ı olan odalar (store `ahilik.room.<KOD>`).
+const ROOM_PREFIX = roomKey('');
+export const savedRooms = (st = defaultStore) => st.keys().filter(k => k.startsWith(ROOM_PREFIX)).map(k => k.slice(ROOM_PREFIX.length)).filter(isCode);
+
+// Açılışta: saklı odalardan sunucuda yaşayan ilkinin kodu, yoksa null. Yok olan odanın kaydı silinir; ağ hatasında kayıt kalır.
+// getRoom(code) -> { status, body } (api() ile aynı biçim).
+export async function findLiveRoom(getRoom, st = defaultStore) {
+  for (const c of savedRooms(st)) {
+    const r = await getRoom(c);
+    if (r.status === 200 && r.body?.exists) return c;
+    if (r.status === 200 && r.body?.exists === false) st.remove(roomKey(c));
+  }
+  return null;
+}
+
+export const restoreRoom = (st = defaultStore) => findLiveRoom(c => api(`/api/rooms/${c}`), st);
+
 export const connText = c => (c === 'ok' ? '' : c === 'lost' ? 'Bağlantı kesildi.' : 'Bağlanıyor…');
 
 // Lobi mesajı ({seats, options, phase}) + benim koltuğum -> ekran modeli.
@@ -250,8 +267,8 @@ export function registerOnlineScreens(menu, deps) {
         });
         session.onUpdate(handoff); // geri dönen oyuncu ya da başlayan oyun: ilk game mesajıyla oyuna geç
         session.onError(m => {
-          menu.toast(m.msg || 'Bir sorun oldu.');
-          if (FATAL.has(m.code)) router.back();
+          menu.toast(m.code === 'badMsg' ? 'Adın ya da karakterin kabul edilmedi. Profilini kontrol et.' : m.msg || 'Bir sorun oldu.');
+          if (FATAL.has(m.code) || m.code === 'badMsg') router.back();
         });
         paintConn(net.conn);
         net.connect({ name: profile.name, avatar: avatarIndex(profile.avatar) });
@@ -288,7 +305,7 @@ export function registerOnlineScreens(menu, deps) {
             if (model?.isHost) { menu.feedback('start'); session.start(); } else { menu.feedback('tap'); session.ready(!ready); }
           }
         });
-        dispose = () => { if (!handed) session.leave(); };
+        dispose = () => { if (!handed) { session.leave(); st.remove(roomKey(code)); } }; // lobiden çıkmak koltuğu bırakır, kayıt da gider
       },
       onUnmount() { dispose?.(); dispose = null; },
     };

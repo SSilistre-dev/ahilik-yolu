@@ -18,6 +18,7 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 - Ayağa kaldır: `python3 -m http.server 8000` (proje kökünden)
 - Çevrimiçi sunucu: `make dev-online` (= `PORT=8080 docker compose up --build`, oyun `http://localhost:8080`; port doluysa `PORT=8090 make dev-online`) · `ws` gerektiren testler: `make test-srv` (konteynerde; paralel işte `COMPOSE_PROJECT_NAME=<ad>` ver, `-p` kullanma). Kısa süre env'leri: `BOT_DELAY_MS`, `DISCONNECT_GRACE_MS`, `ROOM_IDLE_MS`. Saf `server/room.js` testleri host'ta `make olc` ile koşar.
 - Hızlı ölçüm: `make olc` · Tam kapı (bitti demeden önce): `make qa` = sözdizimi + tüm testler (gerçek sayı basar) + varsa tarayıcı testi → 0 fail
+- Çevrimiçi uçtan uca: `make e2e-online` (docker + host Brave; `COMPOSE_PROJECT_NAME`/`PORT` env, varsayılan `ahilik-e2e`/8093; `make qa` çağırmaz) · Deploy smoke: `make smoke` (`SMOKE_URL`, `SMOKE_EXPECT_VERSION`)
 - Tek test: `node --test --test-name-pattern "<ad>" test/`
 - UI kontrolü: headless Brave + CDP ile ekran görüntüsü (`--headless=new --remote-debugging-port=<port> --use-angle=swiftshader --enable-unsafe-swiftshader`); `--screenshot` bayrağı takılıyor, CDP `Page.captureScreenshot` kullan. Görüntüler bakılınca silinir.
 - Sürüm çıkarken `index.html` importmap'teki `?v=` değerini artır (tarayıcı önbelleği).

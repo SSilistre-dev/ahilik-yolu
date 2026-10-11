@@ -41,11 +41,12 @@ export function createNet({ code, WebSocket = globalThis.WebSocket, store, url, 
       try { msg = JSON.parse(ev.data); } catch { return; }
       if (!msg || typeof msg.t !== 'string') return;
       if (msg.t === 'welcome') { store?.set(key, msg.you.token); attempt = 0; lastError = null; setConn('ok'); }
-      else if (msg.t === 'error' && FATAL.has(msg.code)) {
+      else if (msg.t === 'error' && (FATAL.has(msg.code) || (msg.code === 'badMsg' && conn !== 'ok'))) { // welcome öncesi badMsg: hello reddedildi, tekrar denemek boşuna
         if (DROP_TOKEN.has(msg.code)) store?.remove(key);
         lastError = { code: msg.code, msg: msg.msg };
         closed = true; stopPing(); // sunucu zaten kapatır; onclose yeniden bağlanmasın
         emit('error', msg); setConn('lost');
+        try { mine.close(); } catch {}
         return;
       }
       emit(msg.t, msg);
@@ -61,6 +62,7 @@ export function createNet({ code, WebSocket = globalThis.WebSocket, store, url, 
   }
 
   return {
+    get code() { return code; },
     get conn() { return conn; },
     get lastError() { return lastError; },
     // Adı/avatarı hello'ya koyar. Tekrar çağrılırsa yok sayılır.

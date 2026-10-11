@@ -124,6 +124,7 @@ export function createOnlineSession({ net, now = Date.now }) {
   return {
     mode: 'online',
     get you() { return you; },
+    get code() { return net.code; },
     onUpdate(f) { cb = f; if (last) f(last); },
     onLobby(f) { lobbyCb = f; },
     onError(f) { errorCb = f; },

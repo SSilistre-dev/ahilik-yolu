@@ -10,11 +10,12 @@ import { createRouter } from './router.js';
 import { createBotClock } from './botclock.js';
 import { applyTokens, createMenu } from './menu.js';
 import { registerMainScreens, createPause } from './menu-main.js';
-import { registerOnlineScreens, takeRoomLink } from './menu-online.js';
-import { getSettings, botDelays } from './store.js';
+import { registerOnlineScreens, takeRoomLink, restoreRoom } from './menu-online.js';
+import { getSettings, botDelays, store, roomKey } from './store.js';
 import { defineProfile, getProfile } from './profile.js';
 import { defineSettings, applyDom } from './settings.js';
 
+let lastLegal = [], lastMeta = null; // hata ayıklama/e2e: son legal ve meta
 let state = null; // Session'ın verdiği view (gizli alanlar boş); motor state'ini main görmez
 let session = null;
 let highlight = [];
@@ -75,7 +76,7 @@ function attach(s) {
   s.onError?.(e => ui.netError(e));
   s.onUpdate(({ view, legal, events, meta }) => {
     if (s !== session) return;
-    state = view;
+    state = view; lastLegal = legal; lastMeta = meta;
     ui.render(view, legal, events, meta);
     renderScene();
     effects(events);
@@ -146,6 +147,7 @@ applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
 function toMenu() {
+  if (session?.mode === 'online' && roomCode) store.remove(roomKey(roomCode)); // bilerek çıkış: oda unutulur
   session?.leave(); session = null; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
   clock.cancel(); clock.resume();
   started = false; state = null;
@@ -179,12 +181,14 @@ router.onChange(({ name }) => {
   const code = roomLink; roomLink = null;
   router.go('join', { code });
 });
+// Yenilemeden sonra: saklı oda sunucuda yaşıyorsa doğrudan lobiye/oyuna dön (token ile aynı koltuk).
+if (!roomLink && getProfile()) restoreRoom().then(code => { if (code && router.current?.name === 'menu') router.go('lobby', { code }); });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.target.closest?.('input,textarea')) router.back(); });
 // Profil yoksa ilk açılış ekranı; profil varken yenilemede eski "ilk açılış" kaydı menüye döner.
 const hs = history.state;
 router.start(!getProfile() ? { name: 'profile', params: { first: true } } : hs?.name === 'profile' && hs.params?.first ? { name: 'menu' } : undefined);
 
 // Debug handle for manual/CDP testing.
-window.__ahilik = { clock, router, ui, scene, act, sfx, startOnline, get state() { return state; }, get highlight() { return highlight; } };
+window.__ahilik = { clock, router, ui, scene, act, sfx, startOnline, get state() { return state; }, get legal() { return lastLegal; }, get meta() { return lastMeta; }, get highlight() { return highlight; } };
 
 initPwa();
