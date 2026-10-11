@@ -147,7 +147,8 @@ applyTokens();
 const menu = createMenu(document.body, { sfx, buzz });
 const router = createRouter({ guards: { game: () => started, pause: () => started } });
 function toMenu() {
-  if (session?.mode === 'online' && roomCode) store.remove(roomKey(roomCode)); // bilerek çıkış: oda unutulur
+  if (session?.mode === 'online' && session.code) store.remove(roomKey(session.code)); // bilerek çıkış: oda unutulur
+  ui.leave(); // çevrimiçi süre halkası zamanlayıcısı menüde çalışmasın
   session?.leave(); session = null; // bekleyen whenIdle eski oyunun bot zamanlayıcısını kurmasın
   clock.cancel(); clock.resume();
   started = false; state = null;

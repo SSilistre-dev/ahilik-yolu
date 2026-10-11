@@ -187,6 +187,17 @@ async function main() {
   const n = await st(A);
   assert(n.gameId !== over.gameId && n.gameId === (await st(B)).gameId, `Tekrar Oyna: yeni gameId ${n.gameId}`);
 
+  // B bilerek çıkar: Duraklat -> Oyundan Çık -> onay. Menüye döner, saklı oda token'ı silinir, A'da B "Bot oynuyor" olur.
+  const roomKeys = p => p.ev(`Object.keys(localStorage).filter(k=>k.startsWith('ahilik.room.')).length`);
+  assert(await roomKeys(B) > 0, 'B çıkmadan önce saklı oda token\'ı var');
+  await B.clickWhen('[data-a="pause"]', 5000);
+  await B.clickWhen('[data-p="exit"]', 5000);
+  await B.clickWhen('.mn-btns .ok', 5000);
+  await B.wait(`history.state?.name==='menu' && !window.__ahilik.state`, 'B menüde', 10000);
+  assert(await roomKeys(B) === 0, 'Oyundan Çık: B menüde, saklı oda token\'ı silindi');
+  await A.wait(`window.__ahilik.meta?.seats?.[1]?.bot === true`, 'A\'da B koltuğu bot', 15000);
+  assert(true, 'A\'da ayrılan B koltuğu bot oynuyor');
+
   await sleep(500);
   assert(problems.length === 0, `konsol hatası/istisna yok${problems.length ? `: ${problems.slice(0, 3).join(' | ')}` : ''}`);
 }

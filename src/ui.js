@@ -747,6 +747,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
       for (const s of botSteps(events, who, state)) { told.add(s.ev); steps.push(s, holdFor(s)); }
     },
     botBacklog: () => steps.backlog(),
+    leave() { clearInterval(ringTimer); ringTimer = 0; ringDl = null; },
     botSkip() { rv?.finish(false); steps.skip(); },
     rejectReason: idx => !st || sheet ? null : rejectReason(st, legal, selected, viewer, idx),
     reject,
