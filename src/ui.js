@@ -3,6 +3,7 @@ import { createTutorial } from './tutorial.js';
 import { turnsLeft, endReason } from './game.js';
 import { reducedMotion, getSettings, botDelays } from './store.js';
 import { botSteps, createStepQueue } from './botclock.js';
+import { FATAL } from './net.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const PHASE = { ahlak: 'Ahlak kartı aç', close: 'Kapatılacak parlayan kareye dokun', move: 'Yol kartıyla ilerle', over: 'Oyun bitti' };
@@ -18,7 +19,7 @@ const reduced = () => reducedMotion();
 const ART = new URL('../assets/cards/', import.meta.url).href;
 export const cardArt = id => {
   const c = CARDS[id];
-  const f = !c ? id : c.joker ? 'yol-ahievran' : c.kargo ? 'yol-kargo'
+  const f = id == null ? 'yol-back' : !c ? id : c.joker ? 'yol-ahievran' : c.kargo ? 'yol-kargo'
     : c.type === 'yol' ? `yol-${c.ilke}${c.hasText ? '-text' : ''}`
     : c.type === 'ahlak' ? `ahlak-${c.ilke}${c.negative ? '-neg' : ''}`
     : `ticaret-${c.city}-${c.value}`;
@@ -90,6 +91,51 @@ export function nextViewer(st, viewer) {
   return viewer === a || (viewer === st.active && st.players[a]?.bot) ? viewer : null;
 }
 
+// ---- Çevrimiçi oyun içi saf yardımcılar (OL-5/6; test/online-ui.test.js) ----
+// Hazır tepkiler (SPEC emote id'leri); serbest metin yok.
+export const EMOTES = [
+  { id: 'selam', emoji: '👋', label: 'Selam' }, { id: 'aferin', emoji: '👏', label: 'Aferin' }, { id: 'olsun', emoji: '🤝', label: 'Olsun' },
+  { id: 'tesekkurler', emoji: '🙏', label: 'Teşekkürler' }, { id: 'hadi', emoji: '⏩', label: 'Hadi' }, { id: 'dusunuyorum', emoji: '🤔', label: 'Düşünüyorum' },
+];
+export const emoteOf = id => EMOTES.find(e => e.id === id) ?? null;
+// Süre halkası: meta.deadline session'da zaten istemci saatine çevrilmiş (skew düzeltilmiş). total: halkanın tam süresi (sn).
+export function timerView(meta, now, total) {
+  if (meta?.deadline == null) return null;
+  const left = Math.max(0, Math.ceil((meta.deadline - now) / 1000));
+  return { left, urgent: left <= 10, frac: total > 0 ? Math.min(1, left / total) : 0 };
+}
+// Koltuk künyesi: Sen işareti, çevrimdışı soluk, takeover/bota dönen insan rozeti. stateBot: oyun başından bot mu.
+export function seatTags(seat, you, stateBot) {
+  if (!seat) return { you: false, faded: false, tag: null };
+  const tag = seat.takeover ? 'Bot oynuyor' : !seat.online ? 'Çevrimdışı' : seat.bot && !stateBot ? 'Bot devraldı' : null;
+  return { you: seat.seat === you, faded: !seat.online, tag };
+}
+// Oyun sonu "Tekrar Oyna" düğme metni; meta.rematch = { votes: [koltuk], need }.
+export function rematchInfo(rm, you) {
+  const votes = rm?.votes ?? [], voted = votes.includes(you);
+  return { voted, text: voted ? `Oyun bekleniyor (${votes.length}/${rm.need})` : votes.length ? `Tekrar Oyna (${votes.length}/${rm.need})` : 'Tekrar Oyna' };
+}
+// Çevrimiçi/yerel arayüz farkları tek yerde.
+export const onlineChrome = (online, phase) => ({
+  undo: !online, curtain: !online, tutorial: !online, emote: online,
+  rematch: online && phase === 'over', menu: online && phase === 'over', newGame: !online && phase === 'over',
+});
+const SILENT_ERR = new Set(['stale', 'illegal', 'notYourTurn']); // yeni game zaten gelir
+const CONN_TEXT = { reconnecting: 'Bağlantı koptu, yeniden bağlanılıyor…', lost: 'Bağlantı kesildi.' };
+
+// Event -> toast metni (null = toast yok, yalnız kayıt). Gizli kart kimlikleri (give/want null) metne girmez.
+export function eventText(st, ev) {
+  const nm = i => st.players[i]?.name ?? '?', human_ = i => !st.players[i]?.bot, humans = st.players.filter(p => !p.bot).length;
+  if (ev.type === 'badgePlaced' || ev.type === 'endgame') return null; // endgame: şerit + çip gösterir, kayda düşer
+  if (ev.type === 'nearCity') return human_(ev.pIdx) ? 'Şehre komşusun! Şehre girebilirsin.' : null;
+  if (ev.type === 'refill') return human_(ev.pIdx) && ev.n > 0 ? (humans > 1 ? `${nm(ev.pIdx)} eli 6 karta tamamlandı (+${ev.n})` : `Elin 6 karta tamamlandı (+${ev.n})`) : null;
+  if (ev.type === 'tradeDeclined') return `${nm(ev.pIdx)} takası kabul etmedi`;
+  if (ev.type === 'tradeOffer') return human_(ev.to) ? null : (ev.text ?? `${nm(ev.from)}, ${nm(ev.to)} ile takas teklif etti`);
+  if (ev.type === 'roadAsk') return human_(ev.ask) ? null : (ev.text ?? `${nm(ev.ask)} yola katılmak ister mi?`);
+  if (ev.type === 'roadFailed') return 'Yol açılamadı: kart eksik kaldı, kimse kart kaybetmedi';
+  return ev.text || null;
+}
+
 // onLayout({top, bottom, right}) — all CSS px, measured against the viewport:
 //   top    = px from the viewport TOP covered by the HUD (chips + hint pill + goal band). The toast overlays just below it and is not counted.
 //   bottom = px from the viewport BOTTOM covered by the dock (hand + buttons) = innerHeight - dock visible top.
@@ -99,20 +145,24 @@ export function nextViewer(st, viewer) {
 export function createUI(root, { onAction, onTileHighlight, onLayout, onPause }) {
   root.classList.add('ay-root');
   root.innerHTML = `<div class="ay-hud"><div class="ay-chips ay-p"></div><div class="ay-last" hidden></div><div class="ay-pill"></div>
-      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="pause" aria-label="Duraklat">⏸</button></div></div>
+      <div class="ay-row2"><div class="ay-goal"></div><div class="ay-side"><button class="ay-slot ay-p" data-a="slot" hidden aria-label="Son ahlak kartı"></button><button class="ay-round ay-p" data-a="emote" aria-label="Tepki gönder" hidden>💬</button><button class="ay-round ay-p" data-a="help" aria-label="Nasıl oynanır?">?</button><button class="ay-round ay-p" data-a="pause" aria-label="Duraklat">⏸</button></div></div>
       <div class="ay-toasts"></div></div>
     <div class="ay-dock"><div class="ay-handle ay-p" data-a="fold"></div><div class="ay-sub ay-p"></div><div class="ay-acts ay-p"></div><div class="ay-fan"></div></div>
-    <div class="ay-modal" hidden></div><div class="ay-modal ay-sheetwrap" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div><div class="ay-curtain ay-p" hidden></div>`;
+    <div class="ay-modal" hidden></div><div class="ay-modal ay-sheetwrap" hidden></div><div class="ay-drawer" hidden></div><div class="ay-fx"></div><div class="ay-curtain ay-p" hidden></div>
+    <div class="ay-emotes" hidden></div><div class="ay-conn ay-p" role="status" hidden></div>`;
   const $ = s => root.querySelector(s);
   const hudEl = $('.ay-hud'), goalEl = $('.ay-goal'), chipsEl = $('.ay-chips'), lastEl = $('.ay-last'), pillEl = $('.ay-pill'), slotEl = $('.ay-slot'), toastEl = $('.ay-toasts'), dockEl = $('.ay-dock'),
     handleEl = $('.ay-handle'), subEl = $('.ay-sub'), actsEl = $('.ay-acts'), fanEl = $('.ay-fan'),
-    modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx'), pauseBtn = $('[data-a="pause"]');
+    modalEl = $('.ay-modal'), sheetEl = $('.ay-sheetwrap'), curtainEl = $('.ay-curtain'), drawerEl = $('.ay-drawer'), fxEl = $('.ay-fx'), pauseBtn = $('[data-a="pause"]'), emoBtn = $('[data-a="emote"]'), emoEl = $('.ay-emotes'), connEl = $('.ay-conn');
 
   let st = null, legal = [], selected = null, passAsk = false, sheet = null, trade = {}, viewer = null, rpick = [], rkey = '';
   let bannerSeed = null, wiggled = false, seed = null, celebrate = 0, toastTimer = 0, cel = '';
   let log = [], lastActive = -1, loadEl = null, handOpen = true, lastHl = '', lastAhlakId = null;
   // Bot aksiyonları: kuyruk her adımı en az `hold` ms gösterir (şerit = pill). Anlatılan olaylar toast'ı tekrarlamaz.
   let curStep = null;
+  // Çevrimiçi: meta (bağlantı, süre, künye, rematch), tepki balonları, son ağ hatası, süre halkası (toplam süre ilk görülen kalandır).
+  let meta = null, lastErr = null, ringDl = null, ringTot = 30, ringTimer = 0;
+  const emotes = new Map(); // koltuk -> { id, until }
   const told = new WeakSet();
   const steps = createStepQueue({ onShow: s => { curStep = s; if (st) renderPill(); }, onIdle: () => { curStep = null; if (st) renderPill(); } });
   // Ahlak kartı/ticaret animasyonu bitmeden sıradaki bot aksiyonu başlamasın (hareket azaltmada kısa).
@@ -127,13 +177,15 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
   const has = t => legal.some(a => a.type === t);
   const actorIdx = () => actorOf(st);
   const humans = () => st.players.filter(p => !p.bot).length;
+  const online = () => !!st && st.you != null;
+  const chrome = () => onlineChrome(online(), st?.phase);
   // Telefon şu an bu insan oyuncuda mı? (tek insanda hep evet; çok insanda perde kalkınca)
   const ready = i => !st.players[i].bot && viewer === i;
   // Aktif insan, bekleyen soru yok, perde kalkık: hamle yapabilir.
   const human = () => !!st && st.phase !== 'over' && !st.pending && ready(st.active);
   // Bana soru soruldu mu (takas cevabı / yol katkısı)?
   const asked = () => !!st && st.phase !== 'over' && !!st.pending && ready(actorIdx());
-  const needCurtain = () => st.phase !== 'over' && humans() > 1 && !st.players[actorIdx()].bot && viewer !== actorIdx();
+  const needCurtain = () => onlineChrome(online(), st.phase).curtain && st.phase !== 'over' && humans() > 1 && !st.players[actorIdx()].bot && viewer !== actorIdx();
   const origin = () => root.getBoundingClientRect();
   const center = r => ({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
 
@@ -154,10 +206,10 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     if (st.phase === 'over') return PHASE.over;
     const pd = st.pending, ap = st.players[actorIdx()], p = st.players[st.active];
     if (pd) {
-      if (ap.bot) return pd.kind === 'trade' ? `${ap.name} takas teklifine bakıyor…` : `${ap.name} yol katkısına karar veriyor…`;
+      if (ap.bot || (online() && !asked())) return pd.kind === 'trade' ? `${ap.name} takas teklifine bakıyor…` : `${ap.name} yol katkısına karar veriyor…`;
       return pd.kind === 'trade' ? 'Takas teklifine cevap ver' : 'Yol açmaya katılmak ister misin?';
     }
-    if (p.bot) return `${p.name} oynuyor… (dokun: hızlandır)`;
+    if (p.bot) return `${p.name} oynuyor…${online() ? '' : ' (dokun: hızlandır)'}`;
     if (!human()) return `Sıra ${p.name} oyuncusunda`;
     if (has('readText') && p.pendingText) return 'Kartı sesli oku, +1 rozet';
     if (st.phase === 'ahlak' && has('kargo')) return selected ? 'Uçmak istediğin şehri seç (ahlak kartı açılmaz)' : 'Ahlak kartı aç ya da Kargo kartıyla şehre uç';
@@ -183,17 +235,32 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     goalEl.innerHTML = cel ? `<span class="gt">🎉 ${esc(cel)}</span>`
       : t ? `${img(url(`city-${t.city}`), 'gimg', true)}<span class="gt">Hedef: ${esc(cityName(t.city))} · ${t.value}M</span>` : '';
   }
+  // Çevrimiçi çip eki: künye rozeti, sıra süresi halkası, tepki balonu.
+  function ringHtml(i) {
+    const tv = online() && st.phase !== 'over' && i === actorIdx() ? timerView(meta, Date.now(), ringTot) : null;
+    return tv ? `<span class="ay-tmr ${tv.urgent ? 'urgent' : ''}" style="--f:${tv.frac.toFixed(3)}" role="timer" aria-label="Kalan süre">${tv.left}</span>` : '';
+  }
+  function chipExtra(i) {
+    if (!online()) return { cls: '', html: '', bubble: '' };
+    const tg = seatTags(meta?.seats?.[i], st.you, st.players[i].bot), e = emoteOf(emotes.get(i)?.id);
+    return {
+      cls: `${tg.faded ? 'off' : ''} ${tg.you ? 'you' : ''}`,
+      html: `${tg.you ? '<span class="ay-tag you">Sen</span>' : ''}${tg.tag ? `<span class="ay-tag">${esc(tg.tag)}</span>` : ''}${ringHtml(i)}`,
+      bubble: e && emotes.get(i).until > Date.now() ? `<span class="ay-emo" role="status">${e.emoji} ${esc(e.label)}</span>` : '',
+    };
+  }
   function renderHud() {
     const act_ = actorIdx(), many = st.players.length > 4; // 5-6 oyuncu: tüm çipler kompakt, HUD tahtayı yemesin
     chipsEl.classList.toggle('many', many);
     chipsEl.innerHTML = st.players.map((p, i) => {
       const t = p.task ? CARDS[p.task] : null, full = !many && (i === st.active || !p.bot), cur = i === act_ && st.pending;
       const stats = `<span class="ay-stat ay-hc" title="Elinde ${p.hand.length} kart"><i class="ay-mc"></i>${p.hand.length}</span>${badgeHtml(p.badges)}<span class="ay-stat ay-mny">${money(p)}M</span>`;
-      if (!full) return `<div class="ay-chip mini ${i === st.active ? 'active' : ''} ${cur ? 'asked' : ''}" data-p="${i}" style="--pc:${p.color}"><div class="r1"><i class="dot"></i><span class="ay-name">${esc(p.name)}</span></div><div class="r2">${stats}</div></div>`;
-      return `<div class="ay-chip ${i === st.active ? 'active' : ''} ${cur ? 'asked' : ''}" data-p="${i}" style="--pc:${p.color}">
-        <div class="r1"><span class="ay-ring">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="ay-name">${esc(p.name)}</span></div>
+      const x = chipExtra(i);
+      if (!full) return `<div class="ay-chip mini ${i === st.active ? 'active' : ''} ${cur ? 'asked' : ''} ${x.cls}" data-p="${i}" style="--pc:${p.color}"><div class="r1"><i class="dot"></i><span class="ay-name">${esc(p.name)}</span>${x.html}</div><div class="r2">${stats}</div>${x.bubble}</div>`;
+      return `<div class="ay-chip ${i === st.active ? 'active' : ''} ${cur ? 'asked' : ''} ${x.cls}" data-p="${i}" style="--pc:${p.color}">
+        <div class="r1"><span class="ay-ring">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="ay-name">${esc(p.name)}</span>${x.html}</div>
         <div class="r2">${stats}${t
-          ? img(cardArt(p.task), 'ay-note', true).replace('alt=""', `alt="Görev" title="Görev: ${esc(cityName(t.city))} ${t.value}M"`) : '<span class="ay-note none">–</span>'}</div></div>`;
+          ? img(cardArt(p.task), 'ay-note', true).replace('alt=""', `alt="Görev" title="Görev: ${esc(cityName(t.city))} ${t.value}M"`) : '<span class="ay-note none">–</span>'}</div>${x.bubble}</div>`;
     }).join('');
     renderPill(); renderGoal(); renderLast();
   }
@@ -222,7 +289,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
   function renderActs() {
     const mine = human(), btn = [];
     if (mine) {
-      if (has('undo')) btn.push('<button class="ay-btn sm" data-a="undo" aria-label="Geri Al"><span class="ico">↶</span>Geri Al</button>');
+      if (has('undo') && chrome().undo) btn.push('<button class="ay-btn sm" data-a="undo" aria-label="Geri Al"><span class="ico">↶</span>Geri Al</button>');
       if (has('drawAhlak')) btn.push(`<button class="ay-btn primary big pulse" data-a="draw">${img(url('ahlak-back'), 'ico', true)}<span>Ahlak Kartı Aç</span></button>`);
       if (has('enterCity')) {
         const t = CARDS[st.players[st.active].task];
@@ -357,6 +424,13 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
       <button class="ay-btn big" data-a="resp" data-i="${no}">Katılmıyorum</button></div>`;
   }
 
+  // Oyun sonu düğmeleri: yerelde Yeni Oyun (eski davranış); çevrimiçide Tekrar Oyna (oy sonrası bekleme metni) + Ana Menü.
+  function overButtons() {
+    const c = chrome();
+    if (!c.rematch) return '<button class="ay-btn primary big" data-a="new">Yeni Oyun</button>';
+    const rm = rematchInfo(meta?.rematch, st.you);
+    return `<button class="ay-btn primary big ${rm.voted ? '' : 'pulse'}" data-a="rematch" ${rm.voted ? 'disabled' : ''}>${esc(rm.text)}</button><button class="ay-btn big" data-a="menu">Ana Menü</button>`;
+  }
   function renderModal() {
     const p = st.players[st.active];
     if (st.phase === 'over') {
@@ -369,7 +443,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
       const wtxt = ws.length > 1 ? `🤝 Berabere — ${ws.length === 2 ? 'ikisi' : 'hepsi'} de kazandı!` : ws[0] ? `🏆 ${esc(ws[0].name)} kazandı!` : '';
       modalEl.innerHTML = `<div class="ay-dialog ay-p over"><h2>Oyun Bitti</h2>${wtxt ? `<div class="ay-winner">${wtxt}</div>` : ''}${ws.length > 1 ? `<div class="ay-ask">${ws.map(w => esc(w.name)).join(' ve ')}</div>` : ''}
         <div class="ay-scores">${rows}</div><div class="ay-ask">Kazanç = para × rozet çarpanı</div>
-        <button class="ay-btn primary big" data-a="new">Yeni Oyun</button></div>`;
+        ${overButtons()}</div>`;
       modalEl.hidden = false;
     } else if (asked()) {
       modalEl.innerHTML = st.pending.kind === 'trade' ? tradeAskHtml() : roadAskHtml();
@@ -381,6 +455,29 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
         <p class="ay-ask">Yazıyı sesli oku, +1 rozet kazan.</p><button class="ay-btn primary big" data-a="read">Okudum (+1 ${coin})</button></div>`;
       modalEl.hidden = false;
     } else modalEl.hidden = true;
+  }
+
+  // ---------- Çevrimiçi: bağlantı şeridi, tepki seçici, süre halkası ----------
+  function renderConn() {
+    const c = online() ? meta?.conn : null;
+    connEl.hidden = !CONN_TEXT[c];
+    if (connEl.hidden) { connEl.innerHTML = ''; return; }
+    connEl.classList.toggle('lost', c === 'lost');
+    connEl.innerHTML = c === 'lost' ? `<span>${esc(lastErr?.msg || CONN_TEXT.lost)}</span><button class="ay-btn sm" data-a="menu">Ana Menü</button>` : `<span>${CONN_TEXT.reconnecting}</span>`;
+  }
+  const emoPicker = () => `<div class="ay-emopick ay-p"><div class="ay-sheethead"><b>💬 Tepki gönder</b><button class="ay-btn sm" data-a="emote-x">Kapat</button></div>
+    <div class="ay-emogrid">${EMOTES.map(e => `<button class="ay-btn" data-a="emo" data-id="${e.id}"><span class="ico">${e.emoji}</span>${esc(e.label)}</button>`).join('')}</div></div>`;
+  function tickRing() {
+    const tv = online() && st.phase !== 'over' ? timerView(meta, Date.now(), ringTot) : null, el = chipsEl.querySelector('.ay-tmr');
+    if (!tv || !el) return;
+    el.textContent = tv.left; el.style.setProperty('--f', tv.frac.toFixed(3)); el.classList.toggle('urgent', tv.urgent);
+  }
+  // Süre halkası: sunucu deadline'ı (yoksa halka yok). Tam süre = bu deadline'ın ilk görüldüğündeki kalan.
+  function syncRing() {
+    if (!online() || st.phase === 'over' || meta?.deadline == null) { clearInterval(ringTimer); ringTimer = 0; ringDl = null; return; }
+    if (ringDl == null || Math.abs(meta.deadline - ringDl) > 3000) ringTot = Math.max(1, timerView(meta, Date.now(), 1).left);
+    ringDl = meta.deadline;
+    if (!ringTimer) ringTimer = setInterval(tickRing, 250);
   }
 
   // ---------- Toasts + log drawer ----------
@@ -515,7 +612,11 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     else if (a === 'end') act({ type: 'endTurn' });
     else if (a === 'city') act({ type: 'enterCity' });
     else if (a === 'read') act({ type: 'readText' });
-    else if (a === 'new') act({ type: 'newGame' });
+    else if (a === 'new' || a === 'menu') act({ type: 'newGame' }); // yerelde Yeni Oyun, çevrimiçide Ana Menü: ikisi de oturumu bırakıp menüye döner
+    else if (a === 'rematch') act({ type: 'rematch' });
+    else if (a === 'emote') { emoEl.innerHTML = emoPicker(); emoEl.hidden = false; }
+    else if (a === 'emote-x') emoEl.hidden = true;
+    else if (a === 'emo') { emoEl.hidden = true; onAction({ type: 'emote', id: t.dataset.id }); }
     else if (a === 'pass') { passAsk = true; redo(); }
     else if (a === 'pass-no') { passAsk = false; redo(); }
     else if (a === 'pass-yes') act({ type: 'pass' });
@@ -549,25 +650,24 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     }
   });
   drawerEl.addEventListener('click', e => { if (e.target === drawerEl) drawerEl.hidden = true; });
+  emoEl.addEventListener('click', e => { if (e.target === emoEl) emoEl.hidden = true; });
   sheetEl.addEventListener('click', e => { if (e.target === sheetEl) { sheet = null; rkey = ''; renderAll(); } });
 
   function renderAll() {
-    renderSheet(); renderHud(); renderHand(); renderActs(); renderSub(); renderModal(); renderCurtain(); highlight();
+    renderSheet(); renderHud(); renderHand(); renderActs(); renderSub(); renderModal(); renderCurtain(); renderConn(); highlight();
     if (!drawerEl.hidden) renderDrawer();
     measure();
   }
-  const nm = i => st.players[i]?.name ?? '?';
-  // Event -> toast metni (null = toast yok, yalnız kayıt). Modal/perde zaten gösteriyorsa tekrar etme.
-  function evText(ev) {
-    const human_ = i => !st.players[i]?.bot;
-    if (ev.type === 'badgePlaced' || ev.type === 'endgame') return null; // endgame: şerit + çip gösterir, kayda düşer
-    if (ev.type === 'nearCity') return human_(ev.pIdx) ? 'Şehre komşusun! Şehre girebilirsin.' : null;
-    if (ev.type === 'refill') return human_(ev.pIdx) && ev.n > 0 ? (humans() > 1 ? `${nm(ev.pIdx)} eli 6 karta tamamlandı (+${ev.n})` : `Elin 6 karta tamamlandı (+${ev.n})`) : null;
-    if (ev.type === 'tradeDeclined') return `${nm(ev.pIdx)} takası kabul etmedi`;
-    if (ev.type === 'tradeOffer') return human_(ev.to) ? null : (ev.text ?? `${nm(ev.from)}, ${nm(ev.to)} ile takas teklif etti`);
-    if (ev.type === 'roadAsk') return human_(ev.ask) ? null : (ev.text ?? `${nm(ev.ask)} yola katılmak ister mi?`);
-    if (ev.type === 'roadFailed') return 'Yol açılamadı: kart eksik kaldı, kimse kart kaybetmedi';
-    return ev.text || null;
+  const evText = ev => eventText(st, ev);
+
+  // Çevrimiçi: olaylarda aksiyonu yapan koltuk yok; bir önceki görüntünün karar vericisi aksiyonu yapandır.
+  // Başkasının hamlesi (bot, takeover, diğer insan) bot adım şeridiyle anlatılır; benimki anlatılmaz.
+  function narrate(prev, state, events) {
+    if (state.you == null || !prev || !events.length || prev.gameId !== state.gameId) return;
+    const who = actorOf(prev);
+    if (who === state.you || !state.players[who]) return;
+    const ps = { ...state, players: state.players.map((p, i) => (i === who ? { ...p, bot: true } : p)) };
+    for (const s of botSteps(events, who, ps)) { told.add(s.ev); steps.push(s, holdFor(s)); }
   }
 
   // ---------- Layout report ----------
@@ -592,16 +692,21 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
   addEventListener('resize', measure);
 
   return {
-    render(state, legalActions = [], events = []) {
-      st = state; legal = legalActions;
+    render(state, legalActions = [], events = [], m = null) {
+      const prev = st;
+      st = state; legal = legalActions; meta = m;
       pauseBtn.hidden = st.phase === 'over'; // oyun sonunda Duraklat yok
+      emoBtn.hidden = !chrome().emote;
       if ((st.gameId ?? st.seed) !== seed) { // view'da seed yok; gameId oyun kimliği (view.js)
         seed = st.gameId ?? st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
         rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
         log = []; lastActive = -1; lastHl = ''; handOpen = true; selected = null; passAsk = false;
         clearTimeout(celebrate); clearTimeout(toastTimer); steps.clear(); curStep = null;
         toastEl.replaceChildren(); fxEl.replaceChildren(); drawerEl.hidden = true;
+        emotes.clear(); emoEl.hidden = true; lastErr = null; ringDl = null;
       }
+      narrate(prev, state, events);
+      syncRing();
       // Tek insan varsa telefon hep onda; çok insanda perde kalkınca viewer atanır, karar verici değişince düşer.
       viewer = nextViewer(st, viewer);
       if (st.active !== lastActive) { lastActive = st.active; selected = null; passAsk = false; sheet = null; trade = {}; }
@@ -622,9 +727,21 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
         }
       }
       renderAll();
-      tut.update(st, legal, events, tutEls);
+      if (chrome().tutorial) tut.update(st, legal, events, tutEls); // çevrimiçinde eğitim kapalı
     },
     tutorial: tut,
+    // Gelen tepki (emote{seat,id}): ilgili çipte ~3 sn balon.
+    emote(seat, id) {
+      if (!st || !emoteOf(id)) return;
+      emotes.set(seat, { id, until: Date.now() + 3000 });
+      renderHud();
+      setTimeout(() => { if (st && (emotes.get(seat)?.until ?? 0) <= Date.now()) { emotes.delete(seat); renderHud(); } }, 3100);
+    },
+    // Sunucu hatası: stale/illegal/notYourTurn sessiz (yeni game zaten gelir); bağlantıyı kesenler şeritte; kalanı toast.
+    netError(e) {
+      lastErr = e;
+      if (!SILENT_ERR.has(e?.code) && !FATAL.has(e?.code)) toast(e?.msg || 'Bir sorun oldu');
+    },
     // Bot aksiyonunu (events, who = aksiyonu yapan koltuk, state = sonuç) sıralı şeride ekler; render'dan ÖNCE çağrılır.
     botStep(events, who, state) {
       for (const s of botSteps(events, who, state)) { told.add(s.ev); steps.push(s, holdFor(s)); }

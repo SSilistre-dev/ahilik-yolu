@@ -70,10 +70,12 @@ async function begin() {
 
 function attach(s) {
   session = s;
-  s.onUpdate(({ view, legal, events }) => {
+  s.onEmote?.(m => ui.emote(m.seat, m.id));
+  s.onError?.(e => ui.netError(e));
+  s.onUpdate(({ view, legal, events, meta }) => {
     if (s !== session) return;
     state = view;
-    ui.render(view, legal, events);
+    ui.render(view, legal, events, meta);
     renderScene();
     effects(events);
   });
@@ -102,6 +104,8 @@ async function startOnline(s) {
 function act(action) {
   if (!session) return;
   if (action.type === 'newGame') { sfx.play('click'); return toMenu(); }
+  if (action.type === 'rematch') { sfx.play('click'); return session.rematch?.(); }
+  if (action.type === 'emote') return session.emote?.(action.id);
   if (action.type === 'undo') { if (session.undo?.()) { sfx.play('click'); buzz(10); } return; }
   sfx.play('click');
   session.act(action);
