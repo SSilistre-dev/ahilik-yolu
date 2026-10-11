@@ -224,10 +224,10 @@ export function createTutorial(root, { art, url }) {
     reset() { if (readDone()) writeDone(false); armed = true; },
     update(st, legal, events, els) {
       S = { st, legal, els };
-      if (st.seed !== seed) {
+      if ((st.gameId ?? st.seed) !== seed) {
         if (armed) { armed = false; done = false; coach = true; seed = null; }
         if (seed !== null && coach) { coach = false; done = true; writeDone(true); } // ilk oyun bitip yenisi başladı
-        const first = seed === null; seed = st.seed; hadMove = false; resultUntil = quiet = 0;
+        const first = seed === null; seed = st.gameId ?? st.seed; hadMove = false; resultUntil = quiet = 0;
         if (first && coach) openIntro();
       }
       for (const ev of events) {

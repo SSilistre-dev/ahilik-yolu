@@ -83,6 +83,7 @@ export function rejectReason(st, legal, selected, viewer, idx) {
 // (bekleyen takas/yol sorusu varsa cevap verecek olan) telefonu tutuyorsa. Sırası olan, soru bota gidince de tutmaya devam eder.
 export function nextViewer(st, viewer) {
   const hs = st.players.map((p, i) => p.bot ? -1 : i).filter(i => i >= 0);
+  if (st.you != null) return st.you; // çevrimiçi: telefon hep benim koltuğumda
   if (hs.length === 1) return hs[0];
   if (st.phase === 'over' || viewer == null) return null;
   const a = actorOf(st);
@@ -594,8 +595,8 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     render(state, legalActions = [], events = []) {
       st = state; legal = legalActions;
       pauseBtn.hidden = st.phase === 'over'; // oyun sonunda Duraklat yok
-      if (st.seed !== seed) {
-        seed = st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
+      if ((st.gameId ?? st.seed) !== seed) { // view'da seed yok; gameId oyun kimliği (view.js)
+        seed = st.gameId ?? st.seed; bannerSeed = null; wiggled = false; cel = ''; viewer = null; sheet = null; trade = {};
         rv?.finish(true); setSlot(null); // finish writes the old card to the slot, so clear after
         log = []; lastActive = -1; lastHl = ''; handOpen = true; selected = null; passAsk = false;
         clearTimeout(celebrate); clearTimeout(toastTimer); steps.clear(); curStep = null;

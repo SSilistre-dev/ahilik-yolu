@@ -600,7 +600,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
   function render(state, { highlight = [], goal = null, path = [], viewer = null } = {}) { // any `focus` option is ignored: camera always frames the board
     lastRender = [state, { highlight, goal, path, viewer }]; activeIdx = state.active; shadowDirty = true;
     if (!built) { pending = [state, { highlight, goal, path, viewer }]; hl = highlight; pulse = highlight.length > 0; wake(); return; }
-    const fresh = state.seed !== seedSeen; seedSeen = state.seed; // new game: snap, no animations
+    const gid = state.gameId ?? state.seed, fresh = gid !== seedSeen; seedSeen = gid; // new game: snap, no animations
     if (fresh) { first = true; anims.clear(); setView(state, viewer); }
     emph.clear(); for (const i of [...highlight, ...(path || []), ...(goal != null ? [goal] : [])]) emph.add(i);
     setGoal(goal); setPath(state, path, goal);
