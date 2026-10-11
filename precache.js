@@ -10,6 +10,7 @@ self.SHELL_FILES = [
   "src/game.js",
   "src/main.js",
   "src/menu-main.js",
+  "src/menu-online.js",
   "src/menu.js",
   "src/net.js",
   "src/path.js",

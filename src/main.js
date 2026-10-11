@@ -10,6 +10,7 @@ import { createRouter } from './router.js';
 import { createBotClock } from './botclock.js';
 import { applyTokens, createMenu } from './menu.js';
 import { registerMainScreens, createPause } from './menu-main.js';
+import { registerOnlineScreens, takeRoomLink } from './menu-online.js';
 import { getSettings, botDelays } from './store.js';
 import { defineProfile, getProfile } from './profile.js';
 import { defineSettings, applyDom } from './settings.js';
@@ -156,6 +157,7 @@ registerMainScreens(menu, {
   router, getProfile, openHelp: () => ui.tutorial.openHelp(),
   startGame: opts => { start(opts); router.go('game'); }, startOnline,
 });
+registerOnlineScreens(menu, { router, getProfile, startOnline });
 defineProfile(menu, { router });
 defineSettings(menu, { router, onSettings, tutorial: () => ui.tutorial });
 router.onChange(({ name, params, dir }) => {
@@ -165,6 +167,13 @@ router.onChange(({ name, params, dir }) => {
   else if (name === 'pause') { clock.pause(); menu.hide(); pause.show(params); }
   else if (menu.has(name)) menu.show(name, params, dir);
   else { menu.toast('Yakında'); router.back(); }
+});
+// Derin link (?oda=KOD): profil varsa menüye gelince Koda Katıl kod dolu açılır (ilk açılışta önce profil).
+let roomLink = takeRoomLink();
+router.onChange(({ name }) => {
+  if (name !== 'menu' || !roomLink || !getProfile()) return;
+  const code = roomLink; roomLink = null;
+  router.go('join', { code });
 });
 addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !e.target.closest?.('input,textarea')) router.back(); });
 // Profil yoksa ilk açılış ekranı; profil varken yenilemede eski "ilk açılış" kaydı menüye döner.
