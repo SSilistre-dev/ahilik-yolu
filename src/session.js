@@ -99,13 +99,14 @@ export function createLocalSession({ opts, clock, delays, whenIdle = () => Promi
 
 // Çevrimiçi oyun: sunucu otoriterdir, istemci yalnız view görür. net: createNet(); now: istemci saati.
 export function createOnlineSession({ net, now = Date.now }) {
-  let you = null, cb = null, lobbyCb = null, errorCb = null, last = null, version = null, conn = net.conn;
+  let you = null, cb = null, lobbyCb = null, errorCb = null, emoteCb = null, last = null, version = null, conn = net.conn;
   const send = (t, f) => net.send(t, f);
 
   const offs = [
     net.on('welcome', m => { you = m.you.seat; }),
     net.on('lobby', m => lobbyCb?.(m)),
     net.on('error', m => errorCb?.(m)),
+    net.on('emote', m => emoteCb?.(m)),
     net.on('game', m => {
       version = m.version;
       const view = { ...m.view, you };
@@ -126,6 +127,7 @@ export function createOnlineSession({ net, now = Date.now }) {
     onUpdate(f) { cb = f; if (last) f(last); },
     onLobby(f) { lobbyCb = f; },
     onError(f) { errorCb = f; },
+    onEmote(f) { emoteCb = f; }, // { seat, id }
     act(action) { if (version != null) send('act', { action, base: version }); },
     emote: id => send('emote', { id }),
     rematch: () => send('rematch'),
@@ -135,6 +137,6 @@ export function createOnlineSession({ net, now = Date.now }) {
     removeSeat: seat => send('removeSeat', { seat }),
     setOptions: o => send('setOptions', o),
     start: () => send('start'),
-    leave() { send('leave'); net.close(); offs.forEach(o => o()); cb = lobbyCb = errorCb = null; },
+    leave() { send('leave'); net.close(); offs.forEach(o => o()); cb = lobbyCb = errorCb = emoteCb = null; },
   };
 }
