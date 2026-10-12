@@ -13,7 +13,7 @@ export const ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const STATIC_FILES = new Set(['index.html', 'style.css', 'sw.js', 'precache.js', 'manifest.webmanifest']);
 export const STATIC_DIRS = ['src', 'assets'];
 export const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp',
   '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json', '.bin': 'application/octet-stream',
   '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.md': 'text/plain; charset=utf-8' };
 

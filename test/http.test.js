@@ -355,6 +355,16 @@ test('statik: GET /precache.js 200 (sw.js importScripts eder)', () => withServer
   assert.equal(r.body.toString(), rd('precache.js'));
 }));
 
+// Precache'teki her dosya sunulabilmeli: MIME tablosunda olmayan uzantı 404 döner (v21'de .webp unutulmuştu).
+test('statik: precache SHELL_FILES ve ASSET_URLS dosyalarının hepsi 200', () => withServer(async req => {
+  const self = {};
+  new Function('self', rd('precache.js'))(self);
+  for (const f of [...self.SHELL_FILES, ...self.ASSET_URLS]) {
+    const r = await req('/' + f, { method: 'HEAD' });
+    assert.equal(r.status, 200, f);
+  }
+}));
+
 test('statik: beyaz listeli dizindeki sembolik bağ kök dışına çıkamaz', async () => {
   const base = mkdtempSync(path.join(tmpdir(), 'ahi-sym-'));
   const root = path.join(base, 'root');
