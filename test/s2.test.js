@@ -134,12 +134,12 @@ test('readText: reddedilen takas sonrası yasal', () => {
   assert.ok(types(r).includes('readText'));
 });
 
-test('readText: ikinci move fırsatı siler', () => {
+test('readText: sonraki move hakkı silmez (2026-10-12), tur sonu siler', () => {
   const s = textMove();
   const r = step(s, { type: 'move', card: 'yol-comert-1', tile: 7 });
-  assert.equal(r.players[0].pendingText, null);
-  assert.ok(!types(r).includes('readText'));
-  assert.equal(step(textMove(), { type: 'endTurn' }).players[0].pendingText, null);
+  assert.deepEqual(r.players[0].texts, ['yol-merhametli-0']);
+  assert.ok(types(r).includes('readText'));
+  assert.deepEqual(step(textMove(), { type: 'endTurn' }).players[0].texts, []);
 });
 
 // ---- AHI-006 ----

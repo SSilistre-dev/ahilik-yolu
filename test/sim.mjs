@@ -16,7 +16,7 @@ export function parseLineup(levels, players) {
   return l;
 }
 
-const REASONS = [['ahlak destesi bitti', 'ahlak'], ['ticaret destesi bitti', 'ticaret'], ['ödül havuzları boşaldı', 'ödül']];
+const REASONS = [['ahlak destesi bitti', 'ahlak'], ['ticaret destesi bitti', 'ticaret']];
 
 export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 1, long = false } = {}) {
   if (!(players >= 2 && players <= 6)) throw new Error('--players 2-6 olmalı');
@@ -25,7 +25,7 @@ export function runSim({ games = 2000, players = 4, levels = ['medium'], seed = 
   const names = [...new Set(lineup)];
   const by = Object.fromEntries(names.map((k) => [k, { seats: lineup.filter((x) => x === k).length, win: 0, total: 0, money: 0, badges: 0, trades: 0, rows: 0 }]));
   const pos = Array.from({ length: P }, () => ({ win: 0, draws: 0, paid: 0, money: 0, badges: 0 })); // başlayandan sayılan sıra
-  const why = { ahlak: 0, ticaret: 0, ödül: 0 }, acts = {};
+  const why = { ahlak: 0, ticaret: 0 }, acts = {};
   let turns = 0, empty = 0;
   for (let g = 0; g < n; g++) {
     const lv = Array.from({ length: P }, (_, i) => lineup[(i + g) % P]); // seviyeler koltuklarda döner
