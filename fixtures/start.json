@@ -342,7 +342,7 @@
    "task": "ticaret-kayseri-0",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   },
   {
    "name": "Bot 1",
@@ -360,7 +360,7 @@
    "task": "ticaret-kirsehir-0",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   }
  ],
  "decks": {

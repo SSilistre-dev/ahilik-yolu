@@ -151,12 +151,12 @@ test('readText: only after hasText card; +1 badge; endTurn clears it', () => {
   assert.ok(!types(s).includes('readText'));
   assert.throws(() => apply(s, { type: 'readText' }));
   const m = apply(s, { type: 'move', card: 'yol-merhametli-0', tile: 1 }).state;
-  assert.equal(m.players[0].pendingText, 'yol-merhametli-0');
+  assert.deepEqual(m.players[0].texts, ['yol-merhametli-0']);
   const r = apply(m, { type: 'readText' }).state;
   assert.equal(r.players[0].badges, 1);
-  assert.equal(r.players[0].pendingText, null);
+  assert.deepEqual(r.players[0].texts, []);
   const c = apply(m, { type: 'endTurn' }).state;
-  assert.equal(c.players[0].pendingText, null);
+  assert.deepEqual(c.players[0].texts, []);
 });
 
 test('kargo only when movesThisTurn===0; flies to task city, completes trade, ends turn', () => {
@@ -205,20 +205,17 @@ test('yol deck reshuffles from discard', () => {
   assert.equal(yolCards(r).length, 57);
 });
 
-test('end conditions finish the round to startIdx', () => {
+test('end conditions finish the triggering turn', () => {
   // ahlak deck last card
   let s = fresh(); s.decks.ahlak = ['ahlak-comert-0'];
   s = apply(s, { type: 'drawAhlak' }).state;
   assert.ok(s.endgame);
   s.movesThisTurn = 1;
-  s = apply(s, { type: 'endTurn' }).state; // A -> B, round not complete
-  assert.equal(s.phase, 'move'); // empty ahlak deck: no ahlak step
-  s.movesThisTurn = 1;
-  s = apply(s, { type: 'endTurn' }).state; // B -> A (startIdx)
+  s = apply(s, { type: 'endTurn' }).state; // the triggering turn ends -> over
   assert.equal(s.phase, 'over');
   assert.deepEqual(legalActions(s), []);
   assert.throws(() => apply(s, { type: 'endTurn' }));
-  // all awards empty
+  // all awards empty: NOT an end condition
   const a = moveState({ pos: 0, hand: ['yol-comert-1'] });
   for (const k of Object.keys(a.awards)) a.awards[k] = 0;
   a.awards.comert = 1;
@@ -227,12 +224,12 @@ test('end conditions finish the round to startIdx', () => {
   a.players[0].hand = ['yol-comert-1', 'yol-comert-5'];
   const ra0 = apply(a, { type: 'openRoad', tile: 16, cards: ['yol-comert-1', 'yol-comert-5'] }).state;
   const ra = apply(ra0, { type: 'contribute', cards: ['yol-comert-2', 'yol-comert-3'] }).state;
-  assert.ok(ra.endgame);
+  assert.ok(!ra.endgame);
   // ticaret deck last card
   const t = moveState({ pos: 17, hand: ['yol-durust-1'] });
   t.decks.ticaret = ['ticaret-ankara-0'];
   assert.ok(apply(apply(t, { type: 'move', card: 'yol-durust-1', tile: 18 }).state, { type: 'enterCity' }).state.endgame);
-  // endgame triggered with startIdx last in line: B ends -> over
+  // endgame: whoever is active when the turn ends -> over
   const e = moveState(); e.endgame = true; e.active = 1; e.movesThisTurn = 1;
   assert.equal(apply(e, { type: 'endTurn' }).state.phase, 'over');
 });
@@ -281,13 +278,10 @@ test('ahlak destesi doluyken tur ahlak fazında başlar', () => {
   assert.ok(!r.events.some((e) => e.type === 'ahlak'));
 });
 
-test('boş desteli son tur: oyun over olur', () => {
+test('boş desteli son hamle: oyun over olur', () => {
   let s = fresh(); s.endgame = true; s.decks.ahlak = [];
   s.phase = 'move'; s.movesThisTurn = 1;
-  s = apply(s, { type: 'endTurn' }).state; // A -> B
-  assert.equal(s.phase, 'move');
-  s.movesThisTurn = 1;
-  const r = apply(s, { type: 'endTurn' }); // B -> A (startIdx)
+  const r = apply(s, { type: 'endTurn' });
   assert.equal(r.state.phase, 'over');
   assert.ok(!r.events.some((e) => e.type === 'ahlak'));
 });

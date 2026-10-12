@@ -56,7 +56,7 @@ export function newGame({ players, seed = 1, startIdx = 0, long = false }) {
   players.forEach((pl, i) => {
     const task = s.decks.ticaret.pop();
     const p = { name: pl.name, avatar: AVATAR_IDS.includes(pl.avatar) ? pl.avatar : null, color: PLAYER_COLORS[i], bot: !!pl.bot, pos: cityTile(CITIES[CARDS[task].city].opposite),
-      hand: [], task, trades: [], badges: 0, pendingText: null };
+      hand: [], task, trades: [], badges: 0, texts: [] };
     s.players.push(p);
     s.tiles[p.pos].occupants.push(i);
     drawYol(s, p, HAND_SIZE);
@@ -82,17 +82,14 @@ function refill(s, pi, ev) {
 function setEnd(s, ev, why) {
   if (s.endgame) return;
   s.endgame = true;
-  log(ev, 'endgame', `Oyun bitiş aşamasına girdi (${why}). Tur ilk oyuncuya kadar tamamlanacak.`);
+  log(ev, 'endgame', `Oyun bitiş aşamasına girdi (${why}). Bu hamle tamamlanınca oyun biter.`);
 }
 
-// Bitiş aşamasından sonra, şu anki oyuncu dahil oynanacak sıra sayısı (AHI-012).
-export const turnsLeft = (s) => ((s.startIdx - s.active + s.players.length - 1) % s.players.length) + 1;
 // Bitiş aşamasını açan neden; durumdan türer (kayıttan devamda da çalışır).
 export function endReason(s) {
   if (!s.endgame) return null;
   if (!s.decks.ahlak.length) return 'ahlak';
-  if (!s.decks.ticaret.length) return 'ticaret';
-  return Object.values(s.awards).every((n) => n === 0) ? 'odul' : null;
+  return !s.decks.ticaret.length ? 'ticaret' : null;
 }
 
 function moveTo(s, pi, tile) {
@@ -141,10 +138,10 @@ function endTurn(s, ev) {
   refill(s, s.active, ev);
   const next = (s.active + 1) % s.players.length;
   log(ev, 'endTurn', `${p.name} turunu bitirdi.`, { pIdx: s.active });
-  s.turn++; s.movesThisTurn = 0; s.moveDone = false; s.pendingClose = null; p.pendingText = null;
+  s.turn++; s.movesThisTurn = 0; s.moveDone = false; s.pendingClose = null; p.texts = [];
   s.pending = null; s.declined = []; s.offersThisTurn = 0; s.roadTries = 0;
   s.active = next;
-  if (next === s.startIdx && s.endgame) { s.phase = 'over'; log(ev, 'over', 'Oyun bitti.'); }
+  if (s.endgame) { s.phase = 'over'; log(ev, 'over', 'Oyun bitti.'); }
   else {
     refill(s, next, ev); // rule 26: top up to 6 before the ahlak card
     if (!s.decks.ahlak.length && s.long && !s.reshuf) { // AHI-028: ıskarta bir kez karışıp yeni deste olur
@@ -160,7 +157,7 @@ function endTurn(s, ev) {
 const moveTargets = (s, p, id) => {
   const c = CARDS[id];
   if (c.kargo) return [];
-  return neighbors(p.pos).filter((t) => { const T = s.tiles[t]; return T.kind === 'ilke' && !T.closed && (c.joker || T.ilke === c.ilke); });
+  return neighbors(p.pos).filter((t) => { const T = s.tiles[t]; return T.kind === 'ilke' && !T.closed && !T.occupants.length && (c.joker || T.ilke === c.ilke); });
 };
 
 // legal move + kargo actions of the active player (empty => pass is allowed)
@@ -200,7 +197,7 @@ export function legalActions(s) {
   if (s.phase === 'close') {
     return s.tiles.filter((t) => t.ilke === s.pendingClose && !t.closed && !t.occupants.length).map((t) => ({ type: 'closeTile', tile: t.idx }));
   }
-  if (p.pendingText) out.push({ type: 'readText' });
+  if (p.texts.length) out.push({ type: 'readText' });
   if (!s.moveDone) {
     if (nearGoal(s, p)) out.push({ type: 'enterCity' });
     const mv = moveOptions(s, p);
@@ -233,7 +230,10 @@ function roadOpened(s, ev, me, T, offers) {
   T.closed = false; T.closedBy = null;
   s.pending = null;
   log(ev, 'openRoad', `${s.players[me].name} ${ILKELER[T.ilke].name} yolunu açtı (${offers.map((x) => `${s.players[x.pIdx].name}: ${x.cards.length}`).join(', ')}).`, { pIdx: me, tile: T.idx, contrib: offers });
-  if (ILKE_IDS.every((i) => s.awards[i] === 0)) setEnd(s, ev, 'ödül havuzları boşaldı');
+  for (const { pIdx, cards } of offers) for (const id of cards) if (CARDS[id].hasText) { // a written card used on an opened road earns its owner a reading right
+    s.players[pIdx].texts.push(id);
+    log(ev, 'text', `${s.players[pIdx].name} kart yazısını okuyabilir (+1 rozet).`, { pIdx });
+  }
 }
 
 const MAX_ROAD_CALLS = 2; // per turn; digital guard against pestering online players (AHI-008)
@@ -247,7 +247,6 @@ export function apply(state, a) {
   need(s.phase !== 'over', 'oyun bitti');
   const resp = a.type === 'respondTrade' || a.type === 'contribute';
   need(resp ? s.pending?.kind === (a.type === 'respondTrade' ? 'trade' : 'road') : !s.pending, 'bekleyen cevap var');
-  if (a.type === 'move') p.pendingText = null; // reading stays open until the next move or end of turn (AHI-007)
   const inMove = () => need(s.phase === 'move');
   const free = () => { inMove(); need(!s.moveDone); };
   const discard = (id) => { p.hand.splice(p.hand.indexOf(id), 1); s.decks.yolDiscard.push(id); };
@@ -279,7 +278,9 @@ export function apply(state, a) {
         s.phase = 'close'; s.pendingClose = c.ilke;
       } else {
         s.decks.ahlakDiscard.push(id);
-        log(ev, 'ahlak', `${p.name} olumsuz kart açtı (${ad.neg}) ama kapatılacak boş kare yok.`, { pIdx: me, card: id, ilke: c.ilke });
+        const paid = Math.min(2, p.badges);
+        p.badges -= paid;
+        log(ev, 'ahlak', `${p.name} olumsuz kart açtı (${ad.neg}) ama kapatılacak boş kare yok${paid ? `; ${paid} rozet ödedi` : ''}.`, { pIdx: me, card: id, ilke: c.ilke, paid });
         s.phase = 'move';
       }
       break;
@@ -302,7 +303,7 @@ export function apply(state, a) {
       enter(s, me, a.tile, ev);
       s.movesThisTurn++;
       log(ev, 'move', `${p.name} piyonunu ${ILKELER[s.tiles[a.tile].ilke].name} karesine taşıdı.`, { pIdx: me, card: a.card, tile: a.tile });
-      if (c.hasText) { p.pendingText = c.id; log(ev, 'text', `${p.name} kart yazısını okuyabilir (+1 rozet).`, { pIdx: me }); }
+      if (c.hasText) { p.texts.push(c.id); log(ev, 'text', `${p.name} kart yazısını okuyabilir (+1 rozet).`, { pIdx: me }); }
       if (nearGoal(s, p)) log(ev, 'nearCity', `${p.name} görev şehrine komşu kareye geldi.`, { pIdx: me, city: CARDS[p.task].city });
       break;
     }
@@ -324,8 +325,8 @@ export function apply(state, a) {
       break;
     }
     case 'readText': {
-      inMove(); need(p.pendingText);
-      p.pendingText = null; p.badges++;
+      inMove(); need(p.texts.length);
+      p.texts.shift(); p.badges++;
       log(ev, 'read', `${p.name} yazıyı okudu, +1 rozet.`, { pIdx: me });
       break;
     }

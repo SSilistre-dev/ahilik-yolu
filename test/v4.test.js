@@ -222,15 +222,13 @@ test('5-6 players supported, 1 and 7 rejected, 6 distinct colours', () => {
   assert.throws(() => newGame({ players: Array.from({ length: 7 }, () => ({ name: 'x' })), seed: 1 }));
 });
 
-test('startIdx: starts there, game ends when turn wraps back to it', () => {
+test('startIdx: starts there; endgame ends the game at the end of the triggering turn (not at the wrap)', () => {
   let s = newGame({ players: P3, seed: 5, startIdx: 1 });
   assert.equal(s.active, 1);
   assert.equal(s.startIdx, 1);
   s.endgame = true;
   const step = () => { s.phase = 'move'; s.movesThisTurn = 1; s = apply(s, { type: 'endTurn' }).state; };
-  step(); assert.equal(s.active, 2); assert.equal(s.phase, 'ahlak');
-  step(); assert.equal(s.active, 0); assert.equal(s.phase, 'ahlak'); // seat 0 is not the end
-  step(); assert.equal(s.active, 1); assert.equal(s.phase, 'over');
+  step(); assert.equal(s.active, 2); assert.equal(s.phase, 'over');
 });
 
 test('score: full tie shares rank, otherwise tie-breaks still order', () => {

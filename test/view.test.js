@@ -15,7 +15,7 @@ function allowed(s, seat) {
   const ok = new Set([
     ...s.decks.yolDiscard, ...s.decks.ahlakDiscard,
     ...s.tiles.flatMap((t) => (t.closedBy ? [t.closedBy] : [])),
-    ...s.players.flatMap((p) => [...p.trades, ...(p.task ? [p.task] : []), ...(p.pendingText ? [p.pendingText] : [])]),
+    ...s.players.flatMap((p) => [...p.trades, ...(p.task ? [p.task] : []), ...p.texts]),
   ]);
   if (s.phase === 'close') ok.add(`ahlak-${s.pendingClose}-neg`);
   if (seat != null) s.players[seat].hand.forEach((id) => ok.add(id));

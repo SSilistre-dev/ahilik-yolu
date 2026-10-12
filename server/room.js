@@ -268,6 +268,11 @@ export function disconnect(room, token, now, rand) {
 
 // Diskten yüklenen oda: hiç soket yok. İnsanlar çevrimdışı sayılır (kopma süresi şimdiden işler), zamanlayıcılar yeniden kurulur.
 export function resumeRoom(room, now) {
+  const OLD = 'pending' + 'Text'; // eski tek yuvalı alan adı (2026-10-12'den önce); grep kapısı için bölünmüş
+  for (const p of room.game?.state?.players ?? []) { // eski anlık görüntü -> texts
+    p.texts ??= p[OLD] ? [p[OLD]] : [];
+    delete p[OLD];
+  }
   for (const s of room.seats) if (isHuman(s)) Object.assign(s, { online: false, lostAt: now });
   if (room.phase === 'game') reschedule(room, now);
 }

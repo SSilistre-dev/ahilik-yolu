@@ -11,7 +11,7 @@ Kaynak: kural kitabı (PDF `Kural Kitabı - Talha temmuz25.pdf`, künye © Hazir
 | merhametli | Merhametli | Acımasız | #f5a623 (sarı-turuncu) |
 | tokgozlu | Tokgözlü | Açgözlü | #138a8a (petrol) |
 | disiplinli | Disiplinli | Düzensiz | #7b3fa0 (mor) |
-| adaletli | Adaletli | Haksız | #d0302b (kırmızı) |
+| adaletli | Adaletli | Haksızlık Eden | #d0302b (kırmızı) |
 | bilgili | Bilgili | Cahil | #5aa832 (yeşil) |
 | durust | Dürüst | Yalancı | #2f5fb3 (mavi) |
 
@@ -56,9 +56,11 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
      Karede piyon varsa rozeti o oyuncu hemen alır. Karede birden çok piyon varsa önce gelen alır.
    - Olumsuz kart açılırsa oyuncu o ilkenin, üzerinde piyon olmayan 3 karesinden birini kapatır.
      Karedeki rozetler kasaya gider. Kartı açan oyuncu 2 rozet öder (rozeti varsa).
+   - Olumsuz kart açılır ama kapatılacak boş kare yoksa kart ıskartaya gider ve kartı açan oyuncu yine `min(2, rozet)` rozet öder
+     (`ahlak` event'inde `paid`; yazar cevabı, 2026-10-12).
 2. **Piyonu ilerlet.**
    - Her yol kartı, piyonu 8 komşu kareden ilkesi eşleşen birine götürür.
-   - Kapalı kareye girilemez. Piyonlar üst üste durabilir.
+   - Kapalı kareye ve başka piyonun durduğu ilke karesine girilemez (her ilke karesinde en çok bir piyon; yazar cevabı, 2026-10-12). Şehir karelerinde birden çok piyon durabilir.
    - Girilen karedeki rozetler alınır.
    - Görev şehrine komşu bir kareye gelen oyuncu şehre `enterCity` aksiyonuyla girer: piyon şehre geçer,
      ticaret kartı kazanılır ve yeni görev çekilir (AHI-004, kural 20; bkz. v6).
@@ -76,12 +78,13 @@ KONYA       tokgozlu    merhametli  adaletli    KAYSERI
 
 ## Oyunun sonu
 
-Oyun şu 3 durumdan biri olunca bitme aşamasına girer:
+Oyun şu 2 durumdan biri olunca bitme aşamasına girer (`endgame`):
 - Ahlak destesinin son kartı açılır.
-- Ödül havuzlarının hepsi boşalır.
-- Ticaret destesinin son kartı alınır.
+- Ticaret destesinin son kartı alınır (varsayım: yazar cevabı yalnız ahlak destesini söyledi; ticaret aynı kurala bağlandı).
 
-Tur, ilk oyuncuya kadar tamamlanır.
+Tek bitiş kuralı: bitiş aşamasını açan oyuncunun hamlesi (turu) tamamlanınca oyun biter (`endTurn` içinde `phase = 'over'`);
+tur ilk oyuncuya kadar tamamlanmaz. Ödül havuzlarının boşalması bitiş koşulu DEĞİLDİR (kaldırıldı, 2026-10-12).
+Uzun oyunda (`long`, AHI-028) ahlak destesinin ilk tükenmesinde ıskarta karışır, ikincide bitiş aşaması açılır.
 
 ## Puanlama
 
@@ -147,7 +150,7 @@ state = {
   offersThisTurn: 0, roadTries: 0, // v4: tur içi sayaçlar (bot döngü koruması), endTurn'de 0
   tiles: [25]{ idx, r, c, kind:'city'|'ilke', ilke, city, closed:false, closedBy:null, badges:0, occupants:[pIdx] }, // occupants ordered by arrival
   awards: { [ilke]: 4 },
-  players: [{ name, avatar /*AVATAR_IDS içinden ya da null*/, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, pendingText:null /*cardId*/ }],
+  players: [{ name, avatar /*AVATAR_IDS içinden ya da null*/, color, bot, pos /*tile idx*/, hand:[cardId], task /*ticaret cardId|null*/, trades:[cardId], badges:0, texts:[] /*cardId[]: okunmamış yazı hakları*/ }],
   decks: { yol:[], yolDiscard:[], ahlak:[], ahlakDiscard:[], ticaret:[] },
 }
 ```
@@ -296,7 +299,7 @@ Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesi
 - **Rozet (kural 29):** `p.badges` toplam puandır. UI bunu altın = `floor(b/5)`, gümüş = `b%5` olarak gösterir.
 - **Beraberlik:** önce rozet, sonra ticaret sayısı. Hepsi eşitse iki oyuncu da kazanır: `score` aynı `rank` verir.
 - Değişmeyen ve doğrulanmış: ahlak kartı (olumlu, olumsuz, kapalı kareye rozet konmaz, karedeki ilk gelen alır), komşu 8 yön, hareket sınırı yok,
-  piyonlar üst üste durabilir, zincirleme ticaret (kural 22), 3 bitiş koşulu ve turun ilk oyuncuya kadar tamamlanması, yazıyı okuma +1, ×2..×5.
+  (tarihsel: piyonlar üst üste durabilir; 2026-10-12'den beri dolu ilke karesine girilmez), zincirleme ticaret (kural 22), (tarihsel: 3 bitiş koşulu ve tur tamamlama; 2026-10-12'den beri 2 koşul, tetikleyen tur biter), yazıyı okuma +1, ×2..×5.
 
 ### Sözleşme değişiklikleri
 ```js
@@ -345,8 +348,7 @@ Kullanıcı kararı (2026-10-10): kural kitabına göre uygula. Bu bölüm v1–
 - Geri Al: `enterCity` geri alınamaz; komşu kareye `move` geri alınabilir (glue).
 
 ### Okuma fırsatı (AHI-007, kural 27/3)
-- Okuma fırsatı (`pendingText`) yalnız sonraki `move`'da ve tur sonunda kapanır; ara hamleler (takas, yol açma, katkı cevabı, `enterCity`) onu silmez.
-  Tek yuva: iki yazılı kartla art arda hareket eden oyuncu ilkini okumadıysa kaybeder.
+- (Tarihçe, 2026-10-12'de değişti: eski `pendingText` tek yuvaydı, yalnız `move`'da doğar, sonraki `move`'da düşerdi. Güncel kural aşağıda, "Yazar cevapları".)
 
 ### Yol açmada serbest kart seçimi (AHI-006, kural 16–17)
 - `legalActions`, `openRoad` ve `contribute` için kartları **tür bazında** tüm kombinasyonlarla sunar. Tür: düz ilke kartı, yazılı ilke kartı (`ilke*`), joker.
@@ -367,8 +369,8 @@ Kullanıcı kararı (2026-10-10): kural kitabına göre uygula. Bu bölüm v1–
 
 ## v6: Oyun içi UX (AHI-012/014/017/020)
 
-- `game.js`: `turnsLeft(state)` = `((startIdx - active + n - 1) mod n) + 1` (bitiş aşamasında, şu anki oyuncu dahil kalan sıra); `endReason(state)` -> `'ahlak' | 'ticaret' | 'odul' | null` (`endgame` yoksa `null`; durumdan türer, olay alanı yok).
-- `ui.js`: `lastRound(state)` -> `{ left, reason } | null` (`endgame && phase !== 'over'`). Şerit `endgame` olayında oyun başına bir kez, oyun aynı hamlede bittiyse hiç; HUD'da kalıcı `.ay-last` çipi.
+- `game.js`: `endReason(state)` -> `'ahlak' | 'ticaret' | null` (`turnsLeft` ve `'odul'` 2026-10-12'de kalktı) (`endgame` yoksa `null`; durumdan türer, olay alanı yok).
+- `ui.js`: `lastRound(state)` -> `{ reason } | null` (metin "Son hamle", 2026-10-12) (`endgame && phase !== 'over'`). Şerit `endgame` olayında oyun başına bir kez, oyun aynı hamlede bittiyse hiç; HUD'da kalıcı `.ay-last` çipi.
 - `ui.js`: `rejectReason(state, legal, selected, viewer, idx)` -> Türkçe neden metni | `null` (bot sırası, perde, bekleyen soru, geçerli dokunuş = `null`). Reddedilen dokunuş: kırmızı halka + tek toast; 400 ms içinde ikinci reddedişte yalnız halka. `tapTile` sözleşmesi değişmez.
 - `ui.js`: `nextViewer(state, viewer)` — telefonu tutan insanın eli yalnız karar verici (bekleyen takas/yol sorusunda cevap verecek oyuncu) ya da sırası olan oyuncuysa görünür; bot ya da başka insan sırasında `null` (`Eller gizli`). Tek insanda hep o insan. Soru bota gidince sırası olan oyuncu telefonu tutmaya devam eder.
 - `tutorial.js`: `viewerPlayer(state, viewer)` — eğitim/yardım örnek kartı için oyuncu; çok insanlı oyunda telefon kimsede değilse `null` (jenerik örnek kartlar).
@@ -395,12 +397,11 @@ Maddeler AHI-009, AHI-010, AHI-029, AHI-030 ve AHI-008 ile eklenir.
   | 5 | 1846 | 154 | 0 |
   | 6 | 1767 | 230 | 3 |
 
-  "Ödül havuzları boşaldı" koşulu doğru çalışır (`test/game.test.js`, "all awards empty") ama pratikte nadirdir; kural kitabıyla aynıdır,
-  değiştirilmez. İnsanlı oyunda oran farklı olabilir, ölçülmedi.
+  Ödül havuzu koşulu pratikte nadirdi ve yazar cevabıyla 2026-10-12'de bitiş koşulu olmaktan çıkarıldı (tablo tarihsel). İnsanlı oyunda oran farklı olabilir, ölçülmedi.
 - **Uzun oyun (AHI-028, kullanıcı kararı: seçenek var, varsayılan KAPALI).** Kitapta yoktur; 5-6 oyunculu masada oyun kısa kaldığı için isteğe bağlıdır.
   `newGame({ ..., long: true })`: ahlak destesi boşaldığında bitiş aşamasına girilmez; bir sonraki tur başında ıskarta bir kez karıştırılıp yeni deste olur
   (`reshuf = true`), iki deste de bitince normal bitiş. Kapalı karelerdeki ahlak kartları ıskartada değildir, yeni deste 21 karttan küçük olabilir.
-  Ticaret destesi ve ödül havuzu bitişi değişmez; bitiş nedeni çoğunlukla ticaret destesine kayar (ölçüm: docs/ARCHITECTURE.md §9). `long` verilmezse davranış
+  Ticaret destesi bitişi değişmez; bitiş nedeni çoğunlukla ticaret destesine kayar (ölçüm: docs/ARCHITECTURE.md §9). `long` verilmezse davranış
   birebir aynıdır. Arayüz anahtarı ve oda ayarı menü issue'larındadır (5-6 oyuncuda görünür).
 - **Denge notu: ilk oyuncu (AHI-027).** Bot ölçümü (`make sim`, seviyeler ve başlayan koltuk bağımsız döner): 4 oyuncuda başlayandan sıra kazanma payı
   %23,4 / 26,0 / 25,9 / 24,7 (Orta, 12000 oyun, ±0,8); hepsi Zor için %23,6 / 26,6 / 25,0 / 24,8 (3008 oyun, ±1,6). Mekanizma: ahlak destesi 21 karttır;
@@ -539,3 +540,23 @@ Kullanıcı kararı (2026-10-10): şu üç kural kural kitabına göre uyguland�
 Kalan madde planlanandır.
 
 - **Uzun oyun seçeneği (AHI-028, planlanan):** 5–6 oyuncuda isteğe bağlı "uzun oyun" ayarı; **varsayılan kapalı**. Ayrıntı (hangi sayılar değişir) AHI-028 ile bu bölüme eklenir; çevrimiçi odada `setOptions` ile host seçer, bunun için `options` alanı o issue'da genişler.
+
+## Yazar cevapları (2026-10-12)
+
+Kural kitabı yazarının cevapları. 1-4 motora işlendi; 5-9 ve 11 kayıtlı karar; 10 motora işlendi (motor zaten böyleydi, testle doğrulandı).
+
+1. **Olumsuz kart, boş kare yok.** Kart ıskartaya gider, kartı açan oyuncu `min(2, rozet)` rozet öder; `ahlak` event'inde `paid`, log metni ödenen rozeti söyler.
+2. **Yazılı kart okuma hakkı.** Yazılı kart (`CARDS[id].hasText`) hamlede, yol açarken ya da katkıda KULLANILINCA kartın sahibine bir okuma hakkı doğar.
+   Yol açma/katkıda hak yalnız yol gerçekten açılınca (`roadOpened`) doğar; yol açılamazsa kart kullanılmamış sayılır. Aynı turda iki yazılı kart = iki hak.
+   Durum: oyuncu başına `p.texts` (kart id dizisi, eski `pendingText` yerine). `readText` listenin ilk elemanını okur, +1 rozet; yalnız aktif oyuncuya ve `move` fazında yasal.
+   Hak hamleyle düşmez; sahibinin turu bitince (`endTurn`, aktif oyuncunun listesi) temizlenir. Katkı veren aktif olmayan oyuncunun hakkı kendi turu bitene kadar durur, kendi sırasında kullanır.
+   Sunucu: diskte eski biçimli (`pendingText`) oda anlık görüntüsü `resumeRoom` içinde `texts`'e göçer (`texts ??= pendingText ? [pendingText] : []`).
+3. **Oyun bitişi.** Ahlak destesinin son kartı çekilince, o oyuncunun hamlesi tamamlanınca oyun biter (bkz. "Oyunun sonu"). Ödül havuzu bitişi yok. `turnsLeft` kalktı; arayüz "Son hamle".
+4. **Olumsuz kart adı:** adaletli için `Haksızlık Eden`.
+5. **Çarpan:** 0-4 rozet için ×1 (`score`: `min(5, floor(b/5)+1)`).
+6. **Rozet kasası:** gümüş/altın stok sınırı yok; dijitalde sınırsız, motora konmaz.
+7. **El tamamlama:** el hem hamle sonunda hem tur başında 6'ya tamamlanır; katkı sonrası eksilen el sırası gelince tur başında tamamlanır (`refill`).
+8. **Kazanç tablosu** yalnız toplamlar içindir; motor ticaret kartı değerlerinin toplamını çarpanla çarpar.
+9. **Kargo Uçağı "hiçbir hamle yapmamış":** takas ve yol açma bu kapsama girmez; takas/yol açmadan sonra kargo oynanabilir (`test/kural-yanit.test.js`).
+10. **Dolu ilke karesine girilmez.** Bir ilke karesinde piyon varsa başka piyon `move` ile giremez (`moveTargets`: `occupants` boş olmalı); her ilke karesinde en çok bir piyon. Şehir kareleri hariç (başlangıçta, kargoda ve `enterCity`'de birden çok piyon şehirde durabilir). Kareye ilk gelen rozetleri alır (değişmedi). Hiç yasal hamle kalmazsa mevcut `pas` kuralı işler (`canPass`). Arayüz: dolu kareye dokunuş "Bu karede başka bir piyon var."
+11. **Ahlak destesi 21 kart:** her ilkeden 2 olumlu + 1 olumsuz (`data.js`).

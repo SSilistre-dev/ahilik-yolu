@@ -55,7 +55,7 @@ export function createTutorial(root, { art, url }) {
     const { st, legal } = S, has = t => legal.some(a => a.type === t);
     if (st.phase === 'over' || S.els.blocked?.()) return null;
     if (st.players[st.active].bot) return hadMove ? 'bots' : null;
-    if (has('readText') && st.players[st.active].pendingText) return null;
+    if (has('readText') && st.players[st.active].texts.length) return null;
     if (st.phase === 'ahlak') return has('drawAhlak') ? 'draw' : null;
     if (Date.now() < quiet) return null; // ahlak reveal animasyonu bitsin
     if (st.phase === 'close') return 'close';

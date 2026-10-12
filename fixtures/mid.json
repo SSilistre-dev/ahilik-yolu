@@ -344,7 +344,7 @@
     "ticaret-kirsehir-4"
    ],
    "badges": 6,
-   "pendingText": null
+   "texts": []
   },
   {
    "name": "Bot 1",
@@ -361,7 +361,7 @@
    "task": "ticaret-ankara-0",
    "trades": [],
    "badges": 3,
-   "pendingText": "yol-comert-0"
+   "texts": ["yol-comert-0"]
   },
   {
    "name": "Bot 2",
@@ -378,7 +378,7 @@
    "task": "ticaret-konya-4",
    "trades": [],
    "badges": 11,
-   "pendingText": null
+   "texts": []
   },
   {
    "name": "Bot 3",
@@ -396,7 +396,7 @@
    "task": "ticaret-kirsehir-6",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   }
  ],
  "decks": {

@@ -1,6 +1,6 @@
 import { ILKELER, ILKE_IDS, CARDS, CITIES, PLAYER_COLORS, neighbors } from './data.js';
 import { createTutorial } from './tutorial.js';
-import { turnsLeft, endReason } from './game.js';
+import { endReason } from './game.js';
 import { reducedMotion, getSettings, botDelays } from './store.js';
 import { botSteps, createStepQueue } from './botclock.js';
 import { FATAL } from './net.js';
@@ -47,8 +47,8 @@ const cardHtml = (id, extra = '', attrs = '', style = '') =>
   `<button class="ay-card ${extra}" ${attrs} style="${style}" aria-label="${esc(cardName(id))}">${img(cardArt(id))}${CARDS[id]?.hasText ? '<span class="ay-scroll">📜</span>' : ''}</button>`;
 
 // Bitiş aşamasında (oyun bitmeden) kalan sıra ve neden; yoksa null (AHI-012).
-export const lastRound = (s) => s.endgame && s.phase !== 'over' ? { left: turnsLeft(s), reason: endReason(s) } : null;
-const LAST_WHY = { ahlak: 'Ahlak kartları bitti.', ticaret: 'Ticaret kartları bitti.', odul: 'Ödül rozetleri bitti.' };
+export const lastRound = (s) => s.endgame && s.phase !== 'over' ? { reason: endReason(s) } : null;
+const LAST_WHY = { ahlak: 'Ahlak kartları bitti.', ticaret: 'Ticaret kartları bitti.' };
 
 // Geçersiz kare dokunuşunun nedeni (AHI-014); null = geri bildirim verme (bot/perde/geçerli dokunuş).
 // Geçerli dokunuşları tapTile işler; burada yalnız tapTile'ın false döneceği durumlar metin alır.
@@ -76,6 +76,7 @@ export function rejectReason(st, legal, selected, viewer, idx) {
   if (selected && !sel) return null;
   const ok = has(a => a.type === 'move' && a.tile === idx && (!sel || kind(a.card) === kind(sel)));
   if (ok) return null;
+  if (t.occupants.length) return 'Bu karede başka bir piyon var.';
   const il = ILKELER[t.ilke]?.name ?? '';
   return sel ? `Bu kare ${il}. Seçtiğin kart ${CARDS[sel].joker ? 'Ahi Evran' : ILKELER[CARDS[sel].ilke]?.name}.` : `Elinde ${il} kartı yok.`;
 }
@@ -211,7 +212,7 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     }
     if (p.bot) return `${p.name} oynuyor…${online() ? '' : ' (dokun: hızlandır)'}`;
     if (!human()) return `Sıra ${p.name} oyuncusunda`;
-    if (has('readText') && p.pendingText) return 'Kartı sesli oku, +1 rozet';
+    if (has('readText') && p.texts.length) return 'Kartı sesli oku, +1 rozet';
     if (st.phase === 'ahlak' && has('kargo')) return selected ? 'Uçmak istediğin şehri seç (ahlak kartı açılmaz)' : 'Ahlak kartı aç ya da Kargo kartıyla şehre uç';
     if (st.phase !== 'move') return PHASE[st.phase] ?? st.phase;
     if (sheet?.kind === 'trade') return 'Takas: verdiğin kartı, oyuncuyu ve istediğini seç';
@@ -267,12 +268,12 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
   function renderLast() {
     const lr = lastRound(st);
     lastEl.hidden = !lr;
-    if (lr) lastEl.textContent = lr.left === 1 && human() ? 'Son sıran!' : lr.left === 1 ? 'Son tur · son sıra' : `Son tur · ${lr.left} sıra kaldı`;
+    if (lr) lastEl.textContent = human() ? 'Son hamlen!' : 'Son hamle';
   }
   function lastBanner(why) {
     const el = document.createElement('div');
     el.className = 'ay-banner';
-    el.innerHTML = `<b>SON TUR!</b><span>${esc(LAST_WHY[why] ?? '')}</span><span>Herkes aynı sayıda oynasın diye tur tamamlanacak.</span>`;
+    el.innerHTML = `<b>SON HAMLE!</b><span>${esc(LAST_WHY[why] ?? '')}</span><span>Bu hamle tamamlanınca oyun biter.</span>`;
     const gone = () => el.remove();
     el.addEventListener('click', gone);
     fxEl.append(el);
@@ -448,9 +449,9 @@ export function createUI(root, { onAction, onTileHighlight, onLayout, onPause })
     } else if (asked()) {
       modalEl.innerHTML = st.pending.kind === 'trade' ? tradeAskHtml() : roadAskHtml();
       modalEl.hidden = false;
-    } else if (human() && has('readText') && p.pendingText) {
-      const il = ILKELER[CARDS[p.pendingText].ilke];
-      modalEl.innerHTML = `<div class="ay-dialog ay-p read"><div class="ay-readrow">${img(cardArt(p.pendingText), 'ay-readcard', true)}
+    } else if (human() && has('readText') && p.texts.length) {
+      const tid = p.texts[0], il = ILKELER[CARDS[tid].ilke];
+      modalEl.innerHTML = `<div class="ay-dialog ay-p read"><div class="ay-readrow">${img(cardArt(tid), 'ay-readcard', true)}
         <div><h2 style="color:${il.color}">${esc(il.name)}</h2><p class="ay-text">${esc(il.text)}</p></div></div>
         <p class="ay-ask">Yazıyı sesli oku, +1 rozet kazan.</p><button class="ay-btn primary big" data-a="read">Okudum (+1 ${coin})</button></div>`;
       modalEl.hidden = false;

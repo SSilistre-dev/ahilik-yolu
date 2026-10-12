@@ -363,7 +363,7 @@
    "task": "ticaret-kirsehir-3",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   },
   {
    "name": "Ayşe",
@@ -381,7 +381,7 @@
    "task": "ticaret-kayseri-4",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   },
   {
    "name": "Mehmet",
@@ -399,7 +399,7 @@
    "task": "ticaret-kayseri-1",
    "trades": [],
    "badges": 0,
-   "pendingText": null
+   "texts": []
   }
  ],
  "decks": {
