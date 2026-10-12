@@ -13,7 +13,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PROJECT = process.env.COMPOSE_PROJECT_NAME ?? 'ahilik-e2e';
 const PORT = process.env.PORT ?? '8093';
 const BROWSER = process.env.E2E_BROWSER_PATH ?? '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser';
-const BASE = `http://localhost:${PORT}`;
+const REMOTE = process.env.E2E_URL?.replace(/\/$/, ''); // ayarlıysa docker atlanır, canlı/uzak sunucuya karşı koşar (ör. E2E_URL=https://ahilik.ssilistre.dev)
+const BASE = REMOTE ?? `http://localhost:${PORT}`;
 const env = { ...process.env, COMPOSE_PROJECT_NAME: PROJECT, PORT, BOT_DELAY_MS: process.env.BOT_DELAY_MS ?? '40', DISCONNECT_GRACE_MS: process.env.DISCONNECT_GRACE_MS ?? '10000' };
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -104,10 +105,13 @@ async function cleanup() {
 }
 
 async function main() {
-  log(`compose ${PROJECT} port ${PORT}`);
-  const up = compose('up', '--build', '-d');
-  composeUp = true;
-  if (up.status !== 0) throw new Error(`compose up başarısız: ${up.stderr.slice(-400)}`);
+  if (REMOTE) log(`uzak sunucu ${REMOTE}`);
+  else {
+    log(`compose ${PROJECT} port ${PORT}`);
+    const up = compose('up', '--build', '-d');
+    composeUp = true;
+    if (up.status !== 0) throw new Error(`compose up başarısız: ${up.stderr.slice(-400)}`);
+  }
   await until(async () => (await fetch(`${BASE}/api/health`)).ok, 'sunucu sağlıklı', 120000);
 
   udir = mkdtempSync(join(tmpdir(), 'ahilik-e2e-'));
@@ -144,15 +148,14 @@ async function main() {
   assert(s0.A.you !== s0.B.you && s0.A.gameId === s0.B.gameId, `ikisi de oyunda (koltuk ${s0.A.you}/${s0.B.you}, ${s0.A.gameId})`);
 
   // --- A sırası gelince gerçek düğme; araya B ---
-  let clicked = false;
+  let clicked = false, verBefore;
   await until(async () => {
     const a = await st(A);
-    if (a.types.includes('drawAhlak') && a.phase === 'ahlak') { await A.clickWhen('[data-a="draw"]'); clicked = true; return true; }
+    if (a.types.includes('drawAhlak') && a.phase === 'ahlak') { verBefore = a.ver; await A.clickWhen('[data-a="draw"]'); clicked = true; return true; }
     if (a.nLegal) await drive(A);
     if ((await st(B)).nLegal) await drive(B);
     return false;
   }, 'A ahlak kartı sırası', 60000);
-  const verBefore = (await st(A)).ver;
   await A.wait(`window.__ahilik.meta.version>${verBefore}`, 'Ahlak Kartı Aç sunucuca işlendi');
   assert(clicked, 'A "Ahlak Kartı Aç" düğmesiyle kart çekti');
 
