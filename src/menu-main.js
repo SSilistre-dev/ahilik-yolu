@@ -87,7 +87,7 @@ export function registerMainScreens(menu, deps) {
         <div class="mn-side"><img class="mn-logo" src="assets/cards/logo.jpg" alt="Ahilik Yolu" draggable="false">
           <button type="button" class="mn-chip" data-go="profile" aria-label="Profili düzenle"><i class="av" aria-hidden="true"${av ? ` style="background:${av.color}"` : ''}>${av ? av.glyph : esc([...(profile?.name ?? '?')][0]?.toLocaleUpperCase('tr') ?? '?')}</i><span>Merhaba${name ? `, ${name}` : ''}!</span></button></div>
         <div class="mn-list">${list.map(btn).join('')}</div></div>
-        <footer class="mn-credit"><span>İGİAD · Ahilik Yolu — dijital uyarlama: <a href="https://ssilistre.dev" target="_blank" rel="noopener">ssilistre.dev</a></span><small>sürüm ${VERSION}</small></footer>`,
+        <footer class="mn-credit"><span>İGİAD · Ahilik Yolu</span><a class="kv-credit" href="https://ssilistre.dev" target="_blank" rel="noopener" aria-label="Made by ssilistre.dev"><span aria-hidden="true"><img src="assets/brand/mark-white.webp" alt="" width="12" height="16" decoding="async">Made by <b>ssilistre.dev</b></span><span aria-hidden="true"><img src="assets/brand/wordmark-light-text.webp" alt="" width="68" height="20" decoding="async"></span></a><small>sürüm ${VERSION}</small></footer>`,
       onMount(el) {
         const items = () => [...el.querySelectorAll('.mn-list button:not(:disabled)')];
         el.addEventListener('click', e => {
