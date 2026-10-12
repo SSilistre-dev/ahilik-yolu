@@ -451,6 +451,15 @@ i.ay-dim{position:absolute;pointer-events:none;transition:all .25s}
 .mn-credit{flex:none;display:flex;flex-direction:column;align-items:center;gap:0;margin-top:var(--sp-3);text-align:center;font-size:13px;color:var(--parch);opacity:.75}
 .mn-credit a{display:inline-flex;align-items:center;min-height:var(--tap);padding:0 var(--sp-1);color:var(--gold);font-weight:700}
 .mn-credit small{font-size:13px}
+/* "Made by ssilistre.dev" rozeti: üzerine gelince/odakta yazı yukarı kayar, wordmark aşağıdan gelir */
+.mn-credit .kv-credit{position:relative;display:inline-flex;align-items:stretch;height:var(--tap);overflow:hidden;font-size:11px;font-weight:500;color:var(--parch);text-decoration:none}
+.kv-credit>span{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .3s ease-out}
+.kv-credit>span+span{position:absolute;inset:0;justify-content:center;transform:translateY(100%)}
+.kv-credit img{height:16px;width:auto}
+.kv-credit>span+span img{height:20px}
+.kv-credit b{color:var(--gold)}
+.kv-credit:hover>span:first-child,.kv-credit:focus-visible>span:first-child{transform:translateY(-100%)}
+.kv-credit:hover>span+span,.kv-credit:focus-visible>span+span{transform:none}
 @media (max-height:700px){.mn-menu{justify-content:flex-start}.mn-logo{width:48%}.mn-list .ay-btn{min-height:52px}.mn-list .ay-btn small{display:none}}
 @media (min-width:901px){
   .mn-menu{flex-direction:row;align-items:center;justify-content:center;gap:var(--sp-6);max-width:920px}
