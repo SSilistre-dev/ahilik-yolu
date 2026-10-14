@@ -33,7 +33,7 @@ test('path: no task / already adjacent -> []', () => {
   assert.deepEqual(pathTo(s2, 0), []);
 });
 
-import { pawnSlot, walkTiles, viewFlip } from '../src/path.js';
+import { pawnSlot, walkTiles } from '../src/path.js';
 
 test('pawnSlot: 1-6 piyon karede çakışmaz ve kare içinde kalır', () => {
   for (let n = 1; n <= 6; n++) {
@@ -53,10 +53,4 @@ test('walkTiles: ara karelerden komşu komşu geçer, ışınlanma yok', () => {
     [a, ...w].slice(1).forEach((t, i) => assert.ok(neighbors([a, ...w][i]).includes(t), `${a}->${b} adım ${i}`));
   }
   assert.equal(walkTiles(0, 24).length, 4); // köşegen: 4 adım
-});
-
-test('viewFlip: başlangıcı üst satırdaysa tahta döner, alttaysa dönmez', () => {
-  assert.equal(viewFlip(0), true); assert.equal(viewFlip(4), true);
-  assert.equal(viewFlip(20), false); assert.equal(viewFlip(24), false);
-  assert.equal(viewFlip(null), false);
 });

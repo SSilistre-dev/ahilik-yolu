@@ -116,7 +116,8 @@ test('orta: AHI-021 öncesi bot v4 ile aynı aksiyon dizisi (30 tohum, 2-6 oyunc
     for (let k = 0; s.phase !== 'over' && k < 3000; k++) { const a = decide(s, 'medium'); h.update(JSON.stringify(a)); s = apply(s, a).state; }
   }
   // 2026-10-12: kural motoru değişti (tek bitiş kuralı, okuma hakkı listesi, dolu kareye girilmez); bot kodu aynı, eski hash 7eae7212...
-  assert.equal(h.digest('hex'), 'cfa3b3448594b442c7c2be1a9e65d9e203aa6dda');
+  // 2026-10-14: dolu ilke karesine girilebilir (kural geri açıldı); bot kodu aynı, önceki hash cfa3b344...
+  assert.equal(h.digest('hex'), '262f1f299ccbb8ad53ce021cb932792e44bab7cc');
 });
 
 test('AHI-022: Zor rozet ekonomisi. Eşiğe yakınken bir adım geri sapar, uzakken sapmaz', () => {

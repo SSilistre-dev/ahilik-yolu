@@ -76,7 +76,6 @@ export function rejectReason(st, legal, selected, viewer, idx) {
   if (selected && !sel) return null;
   const ok = has(a => a.type === 'move' && a.tile === idx && (!sel || kind(a.card) === kind(sel)));
   if (ok) return null;
-  if (t.occupants.length) return 'Bu karede başka bir piyon var.';
   const il = ILKELER[t.ilke]?.name ?? '';
   return sel ? `Bu kare ${il}. Seçtiğin kart ${CARDS[sel].joker ? 'Ahi Evran' : ILKELER[CARDS[sel].ilke]?.name}.` : `Elinde ${il} kartı yok.`;
 }

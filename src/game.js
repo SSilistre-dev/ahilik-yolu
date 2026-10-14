@@ -157,7 +157,7 @@ function endTurn(s, ev) {
 const moveTargets = (s, p, id) => {
   const c = CARDS[id];
   if (c.kargo) return [];
-  return neighbors(p.pos).filter((t) => { const T = s.tiles[t]; return T.kind === 'ilke' && !T.closed && !T.occupants.length && (c.joker || T.ilke === c.ilke); });
+  return neighbors(p.pos).filter((t) => { const T = s.tiles[t]; return T.kind === 'ilke' && !T.closed && (c.joker || T.ilke === c.ilke); });
 };
 
 // legal move + kargo actions of the active player (empty => pass is allowed)

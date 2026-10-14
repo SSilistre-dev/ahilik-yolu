@@ -123,7 +123,7 @@ Eşitlikte önce rozet puanına, sonra ticaret sayısına bakılır.
 - Grafik v2'de değişti: basılı ilke görselleri (JPG) ve glTF modeller kullanılır (bkz. v2). Prosedürel CanvasTexture yalnız yedektir.
   Kartlar, el ve log HTML'dir.
 - Mobil kuralları (v2 "Mobil bütçe" ile değişti: gölge piyon ve simgelerde açık, animasyon sürerken loop çalışır):
-  - OrbitControls yok. Kamera sabit eğik açılı.
+  - OrbitControls yok. Kamera sabit, tam tepeden (dik aşağı) bakar; tahta basılı görsel (`assets/cards/board.jpg`) tek düz düzlemdir, her zaman dik durur (döndürme yok).
   - Tap ile drag, 8px eşiğiyle ayrılır.
   - Canvas'ta `touch-action:none` kullanılır.
   - Render talep üzerine yapılır; sürekli loop yok.
@@ -299,7 +299,7 @@ Kural numaraları kitapçığın "Oyun Kuralları ve İstisnai Durumlar" listesi
 - **Rozet (kural 29):** `p.badges` toplam puandır. UI bunu altın = `floor(b/5)`, gümüş = `b%5` olarak gösterir.
 - **Beraberlik:** önce rozet, sonra ticaret sayısı. Hepsi eşitse iki oyuncu da kazanır: `score` aynı `rank` verir.
 - Değişmeyen ve doğrulanmış: ahlak kartı (olumlu, olumsuz, kapalı kareye rozet konmaz, karedeki ilk gelen alır), komşu 8 yön, hareket sınırı yok,
-  (tarihsel: piyonlar üst üste durabilir; 2026-10-12'den beri dolu ilke karesine girilmez), zincirleme ticaret (kural 22), (tarihsel: 3 bitiş koşulu ve tur tamamlama; 2026-10-12'den beri 2 koşul, tetikleyen tur biter), yazıyı okuma +1, ×2..×5.
+  (piyonlar üst üste durabilir; 2026-10-12'de yasaklanan dolu ilke karesine girme 2026-10-14'te geri açıldı), zincirleme ticaret (kural 22), (tarihsel: 3 bitiş koşulu ve tur tamamlama; 2026-10-12'den beri 2 koşul, tetikleyen tur biter), yazıyı okuma +1, ×2..×5.
 
 ### Sözleşme değişiklikleri
 ```js
@@ -558,5 +558,5 @@ Kural kitabı yazarının cevapları. 1-4 motora işlendi; 5-9 ve 11 kayıtlı k
 7. **El tamamlama:** el hem hamle sonunda hem tur başında 6'ya tamamlanır; katkı sonrası eksilen el sırası gelince tur başında tamamlanır (`refill`).
 8. **Kazanç tablosu** yalnız toplamlar içindir; motor ticaret kartı değerlerinin toplamını çarpanla çarpar.
 9. **Kargo Uçağı "hiçbir hamle yapmamış":** takas ve yol açma bu kapsama girmez; takas/yol açmadan sonra kargo oynanabilir (`test/kural-yanit.test.js`).
-10. **Dolu ilke karesine girilmez.** Bir ilke karesinde piyon varsa başka piyon `move` ile giremez (`moveTargets`: `occupants` boş olmalı); her ilke karesinde en çok bir piyon. Şehir kareleri hariç (başlangıçta, kargoda ve `enterCity`'de birden çok piyon şehirde durabilir). Kareye ilk gelen rozetleri alır (değişmedi). Hiç yasal hamle kalmazsa mevcut `pas` kuralı işler (`canPass`). Arayüz: dolu kareye dokunuş "Bu karede başka bir piyon var."
+10. **İlke karesi paylaşılabilir (2026-10-14, kullanıcı kararı).** Bir ilke karesinde piyon varsa başka piyon da `move` ile o kareye girebilir; aynı ilke karesinde birden çok piyon durabilir (`moveTargets` doluluğa bakmaz). Kareye ilk gelen rozetleri alır (`occupants[0]`, değişmedi). Piyon olan kare yine kapatılamaz (`closeTile`/`close` fazı) ve olumsuz kart yalnız boş kare varken kare kapatır; bunlar ayrı kurallardır. Arayüzde dolu kareye dokunuş reddi yoktur.
 11. **Ahlak destesi 21 kart:** her ilkeden 2 olumlu + 1 olumsuz (`data.js`).
