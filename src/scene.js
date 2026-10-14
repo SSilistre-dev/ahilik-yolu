@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { BOARD, AVATARS } from './data.js';
-import { pawnSlot, walkTiles } from './path.js';
+import { pawnSlot, pawnScale, PAWN_R, walkTiles } from './path.js';
 import { MODELS, CARD_ART } from './assets.js';
 import { reducedMotion } from './store.js';
 
@@ -173,7 +173,7 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
     const key = pawnKey(i, avatar);
     const root = new THREE.Group(), body = new THREE.Group(), cfg = MODELS[key], g = loaded[key], model = g && cloneSkinned(g.scene); // per-pawn clone: one Object3D has one parent
     // top-down: a big player-coloured disc with a dark outline and a cream rim, readable from straight above
-    const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(0.35, 0.35, 0.04, 28).translate(0, -0.01, 0), true), 0x2a1d15), paint(norm(new THREE.CylinderGeometry(0.29, 0.3, 0.06, 28), true), color), paint(norm(new THREE.TorusGeometry(0.3, 0.025, 6, 32).rotateX(Math.PI / 2).translate(0, 0.03, 0), true), 0xfff4d6)]), discMat);
+    const disc = new THREE.Mesh(mergeGeometries([paint(norm(new THREE.CylinderGeometry(PAWN_R, PAWN_R, 0.04, 28).translate(0, -0.01, 0), true), 0x2a1d15), paint(norm(new THREE.CylinderGeometry(0.29, 0.3, 0.06, 28), true), color), paint(norm(new THREE.TorusGeometry(0.3, 0.025, 6, 32).rotateX(Math.PI / 2).translate(0, 0.03, 0), true), 0xfff4d6)]), discMat);
     disc.position.y = 0.03; body.position.y = 0.05;
     // active-turn highlight: pulsing gold ring around the disc (visible from above)
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.38, 0.47, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false }));
@@ -227,7 +227,6 @@ export function createScene(canvas, { onTileTap, onProgress, onContextLost } = {
     const t = state.tiles[state.players[p].pos], n = t.occupants.length, sl = pawnSlot(Math.max(0, t.occupants.indexOf(p)), n);
     return V3(tileX(t.c) + sl.x, TOP, tileZ(t.r) + sl.d);
   }
-  const pawnScale = (n) => (n <= 1 ? 1.15 : n === 2 ? 0.85 : n <= 4 ? 0.8 : 0.7);
 
   // ----- goal flag + path trail -----
   const GOLD = 0xffb000;

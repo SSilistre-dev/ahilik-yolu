@@ -32,8 +32,11 @@ export function pathTo(s, pIdx) {
 // Karede n piyon varsa i'inci piyonun ofseti (tahtaya tepeden bakılır): x sağa, d ekranda aşağı (kare kenarı ~1). Piyonlar üst üste binmez, kare içinde kalır.
 export function pawnSlot(i, n) {
   const cols = n <= 2 ? n : Math.ceil(n / 2), row = n <= 2 || i < cols ? 0 : 1, cnt = row ? n - cols : cols, k = row ? i - cols : i;
-  return { x: (k - (cnt - 1) / 2) * (cols === 3 ? 0.3 : 0.54), d: n <= 2 ? 0 : row ? 0.22 : -0.22 };
+  return { x: (k - (cnt - 1) / 2) * (cols === 3 ? 0.34 : 0.54), d: n <= 2 ? 0 : row ? 0.25 : -0.25 };
 }
+// Karede n piyon varken piyon ölçeği; taban diskinin yarıçapı PAWN_R * ölçek.
+export const PAWN_R = 0.35;
+export const pawnScale = (n) => (n <= 1 ? 1.15 : n === 2 ? 0.75 : n <= 4 ? 0.7 : 0.48);
 
 // a'dan b'ye 8 yönlü komşu adımlarla ara kareler (a hariç, b dahil): piyon ışınlanmaz, kare kare yürür.
 export function walkTiles(a, b) {

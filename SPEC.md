@@ -196,9 +196,9 @@ Animasyon önceki ve yeni state farkından türetilir.
 - **Mobil bütçe:**
   - İlk yük ≤ 6 MB (modeller ≤ 3 MB, kart görselleri ≤ 2.5 MB).
   - ≤ 120k üçgen, ≤ 60 draw call. Tekrarlayan objeler InstancedMesh veya merge ile çizilir.
-  - Gölge yalnız piyonlarda ve simge yapılarda, shadow map 1024. DPR en çok 1.5.
+  - Gölge yok (tahta düz basılı görsel). DPR en çok 1.5.
   - Render talep üzerine yapılır; animasyon sürerken loop çalışır.
-  - Bekleme kareleri `setTimeout` ile aralanır (vsync yok); süs döngüsü (parlama, bayrak, aktif piyon nefesi) 5 sn girdisiz kalınca durur, dokunma/render/yeniden boyut/sekme dönüşü uyandırır. Gölge haritası yalnız piyon kıpırdayınca yenilenir. Yalnız aktif piyonun Idle klibi oynar.
+  - Bekleme kareleri `setTimeout` ile aralanır (vsync yok); süs döngüsü (parlama, bayrak, aktif piyon nefesi) 5 sn girdisiz kalınca durur, dokunma/render/yeniden boyut/sekme dönüşü uyandırır. Yalnız aktif piyonun Idle klibi oynar.
   - `prefers-reduced-motion: reduce` açıkken zıplama, kamera kayması, rozet/engel animasyonu ve süs döngüsü yoktur; durum anında yerleşir.
   - WebGL bağlamı kaybolursa çizim durur; geri gelince son durum yeniden çizilir, 3 sn dönmezse "Yeniden Yükle" mesajı çıkar. Kaldırılan piyonların GPU kaynakları `disposePawn` ile serbest bırakılır.
 - **Model yüklenemezse** manifestteki `fallback` primitifi çizilir. Oyun hiçbir zaman bloklanmaz.
@@ -218,7 +218,7 @@ Animasyon önceki ve yeni state farkından türetilir.
     dispose()
   }
   ```
-  `focus` verilirse kamera o kareye yumuşak pan ve zoom yapar; null ise tüm tahta görünür.
+  `focus` yok sayılır; kamera tepeden bakar ve her zaman tüm tahtayı gösterir.
 - `src/ui.js`: mevcut API korunur. Eklenen metodlar:
   - `setLoading(p)`: 0..1 arası ilerleme, 1 olunca yükleme ekranı gizlenir.
   - `flyCoins({ x, y }, pIdx, n)`: ekran noktasından oyuncu çipine para uçurur.

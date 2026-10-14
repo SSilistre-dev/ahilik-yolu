@@ -52,7 +52,7 @@ readyP.then(() => { sceneReady = true; });
 function renderScene() {
   const p = state.players[state.active];
   const show = !p.bot && (state.you == null || state.you === state.active) && ['ahlak', 'close', 'move'].includes(state.phase);
-  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [], viewer: state.you ?? state.players.findIndex(q => !q.bot) });
+  scene.render(state, { highlight, goal: show ? goalTile(state, state.active) : null, path: show ? pathTo(state, state.active) : [] });
 }
 
 // Oyuna geçiş ortak hazırlığı: sahne yüklensin, kart görselleri önden gelsin.
