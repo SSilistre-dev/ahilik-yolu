@@ -18,7 +18,7 @@ Her kural: kural + tarihli gerekçe. Gerekçesiz kural silinir.
 - Ayağa kaldır: `python3 -m http.server 8000` (proje kökünden)
 - Çevrimiçi sunucu: `make dev-online` (= `PORT=8080 docker compose up --build`, oyun `http://localhost:8080`; port doluysa `PORT=8090 make dev-online`) · `ws` gerektiren testler: `make test-srv` (konteynerde; paralel işte `COMPOSE_PROJECT_NAME=<ad>` ver, `-p` kullanma). Kısa süre env'leri: `BOT_DELAY_MS`, `DISCONNECT_GRACE_MS`, `ROOM_IDLE_MS`. Saf `server/room.js` testleri host'ta `make olc` ile koşar.
 - Hızlı ölçüm: `make olc` · Tam kapı (bitti demeden önce): `make qa` = sözdizimi + tüm testler (gerçek sayı basar) + varsa tarayıcı testi → 0 fail
-- Çevrimiçi uçtan uca: `make e2e-online` (docker + host Brave; `COMPOSE_PROJECT_NAME`/`PORT` env, varsayılan `ahilik-e2e`/8093; `make qa` çağırmaz) · Deploy smoke: `make smoke` (`SMOKE_URL`, `SMOKE_EXPECT_VERSION`)
+- Çevrimiçi uçtan uca: `make e2e-online` (docker + host Brave; `E2E_URL=https://ahilik.ssilistre.dev` verilirse docker atlanır, canlıya koşar; `COMPOSE_PROJECT_NAME`/`PORT` env, varsayılan `ahilik-e2e`/8093; `make qa` çağırmaz) · Deploy smoke: `make smoke` (`SMOKE_URL`, `SMOKE_EXPECT_VERSION`)
 - Tek test: `node --test --test-name-pattern "<ad>" test/`
 - UI kontrolü: headless Brave + CDP ile ekran görüntüsü (`--headless=new --remote-debugging-port=<port> --use-angle=swiftshader --enable-unsafe-swiftshader`); `--screenshot` bayrağı takılıyor, CDP `Page.captureScreenshot` kullan. Görüntüler bakılınca silinir.
 - Sürüm çıkarken `index.html` importmap'teki `?v=` değerini artır (tarayıcı önbelleği).
@@ -108,6 +108,7 @@ Bunlar dışında sorma; port doluysa boş port seç ve söyle.
 - 2026-10-09 — Ana canvas'ın ebeveyni boyutsuzdu, sahne şerit olarak render edildi — canvas `#stage` (position:fixed; inset:0) içinde durur, scene ResizeObserver'ı ebeveyni ölçer.
 - 2026-10-09 — main.js değişti ama `?v=` artırılmadı, tarayıcı eski modülü çalıştırdı — `test/version.test.js` zorlar; her JS/CSS değişikliğinden sonra `?v=` ve `sw.js` V birlikte artırılır.
 - 2026-10-09 — Alt ajan commit'i git hook ile engelli; worktree ajanları değişikliği bırakır, ana oturum commit + merge eder.
+- 2026-10-12 — Yeni görsel `python -m http.server` ile doğrulandı, canlıda `.webp` MIME tablosunda yoktu (404) — görsel kontrolü proje sunucusuyla (`make dev-online`) yapılır; `test/http.test.js` precache dosyalarının hepsini 200 ister.
 - 2026-10-09 — giriş modülü importmap'i atlayıp sürümsüz yüklendi — `test/version.test.js` zorlar (giriş inline `import("./src/main.js")`).
 - 2026-10-09 — v10–v12 ve spec doğrudan `main`'e push edildi, PR açılmadı (kullanıcı sordu) — her değişiklik dal + PR + ikinci model review ile gider; `main`'e push = Pages deploy.
 - 2026-10-09 — UI test'i `__ahilik.act` ile aksiyonu doğrudan verdi, düğmenin yanlış `legal` indeksini göremedi (review yakaladı) — UI akışı en az bir kez gerçek DOM düğmesine tıklanarak doğrulanır. `codex exec review` bu hesapta model hatası veriyor; yedek `opencode run -m deepseek/deepseek-v4-pro`, diff dosyası proje içinde (`.wt/`) olmalı.
