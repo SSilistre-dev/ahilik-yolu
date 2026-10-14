@@ -33,13 +33,14 @@ test('path: no task / already adjacent -> []', () => {
   assert.deepEqual(pathTo(s2, 0), []);
 });
 
-import { pawnSlot, walkTiles, viewFlip } from '../src/path.js';
+import { pawnSlot, pawnScale, PAWN_R, walkTiles } from '../src/path.js';
 
 test('pawnSlot: 1-6 piyon karede çakışmaz ve kare içinde kalır', () => {
   for (let n = 1; n <= 6; n++) {
     const s = Array.from({ length: n }, (_, i) => pawnSlot(i, n));
-    assert.ok(s.every((p) => Math.abs(p.x) <= 0.35 && Math.abs(p.d) <= 0.35), `n=${n} kare dışı`);
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(Math.hypot(s[i].x - s[j].x, s[i].d - s[j].d) >= 0.28, `n=${n} ${i}-${j} üst üste`);
+    const r = PAWN_R * pawnScale(n); // taban diskinin gerçek yarıçapı
+    assert.ok(s.every((p) => Math.abs(p.x) + r <= 0.55 && Math.abs(p.d) + r <= 0.55), `n=${n} kare dışı`);
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(Math.hypot(s[i].x - s[j].x, s[i].d - s[j].d) >= 2 * r, `n=${n} ${i}-${j} üst üste`);
   }
 });
 
@@ -53,10 +54,4 @@ test('walkTiles: ara karelerden komşu komşu geçer, ışınlanma yok', () => {
     [a, ...w].slice(1).forEach((t, i) => assert.ok(neighbors([a, ...w][i]).includes(t), `${a}->${b} adım ${i}`));
   }
   assert.equal(walkTiles(0, 24).length, 4); // köşegen: 4 adım
-});
-
-test('viewFlip: başlangıcı üst satırdaysa tahta döner, alttaysa dönmez', () => {
-  assert.equal(viewFlip(0), true); assert.equal(viewFlip(4), true);
-  assert.equal(viewFlip(20), false); assert.equal(viewFlip(24), false);
-  assert.equal(viewFlip(null), false);
 });

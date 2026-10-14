@@ -182,17 +182,14 @@ test('score: 0-4 rozet çarpan x1, 5 rozet x2', () => {
 });
 
 // ---- 6. dolu ilke karesine girilmez (yazar cevabı 10) ----
-test('dolu kare: ilke karesine başka piyon move ile giremez, boşalınca girer; çıkış yoksa pas', () => {
+test('dolu kare: ilke karesine başka piyon move ile girebilir, iki piyon aynı karede; kapatma dolu kareyi dışlar', () => {
   const s = moveState({ pos: 0, hand: ['yol-merhametli-1'] });
   const target = legalActions(s).find((a) => a.type === 'move');
   assert.ok(target, 'kurulum: bir hamle olmalı');
   const occ = structuredClone(s); place(occ, 1, target.tile);
-  assert.ok(!legalActions(occ).some((a) => a.type === 'move' && a.tile === target.tile));
-  assert.throws(() => apply(occ, { type: 'move', card: target.card, tile: target.tile }));
-  if (!legalActions(occ).some((a) => a.type === 'move')) assert.ok(types(occ).includes('pass')); // tek hedef doluysa pas
-  place(occ, 1, 0); // boşalt (şehir karesi)
   assert.ok(legalActions(occ).some((a) => a.type === 'move' && a.tile === target.tile));
-  assert.deepEqual(step(occ, { type: 'move', card: target.card, tile: target.tile }).tiles[target.tile].occupants, [0]);
+  assert.deepEqual(step(occ, { type: 'move', card: target.card, tile: target.tile }).tiles[target.tile].occupants.sort(), [0, 1]);
+  assert.equal(rejectReason(occ, legalActions(occ), null, 0, target.tile), null);
 });
 
 test('dolu kare: şehir karesinde birden çok piyon olabilir (enterCity serbest)', () => {
@@ -201,13 +198,6 @@ test('dolu kare: şehir karesinde birden çok piyon olabilir (enterCity serbest)
   place(s, 1, 24); // Kayseri'de başka piyon var
   s = step(s, { type: 'enterCity' });
   assert.deepEqual(s.tiles[24].occupants.sort(), [0, 1]);
-});
-
-test('dolu kare: dokunuş reddi metni', () => {
-  const s = moveState({ pos: 0, hand: ['yol-merhametli-1'] });
-  const tile = legalActions(s).find((a) => a.type === 'move').tile;
-  place(s, 1, tile);
-  assert.equal(rejectReason(s, legalActions(s), null, 0, tile), 'Bu karede başka bir piyon var.');
 });
 
 // ---- 4. ad ----

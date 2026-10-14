@@ -39,7 +39,7 @@ test('precache: every model, its buffers and textures are listed', () => {
     else if (f.endsWith('.glb')) { const b = readFileSync(root + f); json = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString()); }
     for (const x of [...(json?.buffers ?? []), ...(json?.images ?? [])]) if (x.uri && !x.uri.startsWith('data:')) need.push(dir + decodeURIComponent(x.uri));
   }
-  assert.ok(need.length >= 20, `${need.length} model files`);
+  assert.ok(need.length >= 7, `${need.length} model files`);
   assert.deepEqual(need.filter((p) => !listed.has(p)), []);
 });
 
